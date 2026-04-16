@@ -1,0 +1,24 @@
+command:
+  - streamlit
+  - run
+  - app.py
+  - --server.port
+  - "8000"
+  - --server.address
+  - "0.0.0.0"
+  - --server.enableCORS
+  - "false"
+  - --server.enableXsrfProtection
+  - "false"
+  - --server.enableWebsocketCompression
+  - "false"
+
+env:
+  - name: CATALOG_NAME
+    value: ""  # Set to your Unity Catalog catalog name
+  - name: SCHEMA_NAME
+    value: harmonizing_agent
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: ""  # Set to your SQL Warehouse ID
+  - name: WORKFLOW_JOB_ID
+    value: ""  # Set after deploying the workflow job

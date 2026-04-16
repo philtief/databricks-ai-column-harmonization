@@ -1,0 +1,10 @@
+{
+  "testCommand": "bash scripts/test.sh",
+  "lintCommand": "bash scripts/lint.sh",
+  "requireCoverage": true,
+  "minCoverage": 80,
+  "autoFix": false,
+  "maxAttempts": 50,
+  "stopOnMorning": true,
+  "morningHour": 7
+}

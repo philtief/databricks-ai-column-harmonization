@@ -1,0 +1,81 @@
+"""Shared constants used across notebooks, the Streamlit app, and tests."""
+
+MANDATORY_COLUMNS = [
+    "id_registro",
+    "anio",
+    "mes",
+    "codigo_poliza",
+    "tipo_riesgo",
+    "provincia",
+    "canal_distribucion",
+    "prima_neta",
+    "prima_bruta",
+    "num_siniestros_declarados",
+    "num_siniestros_pagados",
+    "segmento_cliente",
+    "cobertura_principal",
+    "moneda",
+]
+
+GLOBAL_TARGET_COLUMNS = [
+    "record_id",
+    "reporting_year",
+    "reporting_month",
+    "policy_number",
+    "risk_type",
+    "region",
+    "distribution_channel",
+    "net_written_premium_eur",
+    "gross_written_premium_eur",
+    "new_policies_count",
+    "renewed_policies_count",
+    "cancelled_policies_count",
+    "claims_reported_count",
+    "claims_paid_count",
+    "gross_claims_incurred_eur",
+    "claims_reserve_eur",
+    "management_expenses_eur",
+    "commissions_eur",
+    "loss_ratio",
+    "customer_segment",
+    "risk_zone",
+    "primary_coverage",
+    "currency",
+]
+
+SEMANTIC_FIELDS = [
+    "risk_type",
+    "distribution_channel",
+    "customer_segment",
+    "risk_zone",
+    "primary_coverage",
+]
+
+MATCH_TYPE_OPTIONS = ["DIRECT", "SEMANTIC_TRANSLATION", "DERIVED", "NO_MATCH"]
+
+RAW_COLUMN_NAMES = [
+    "id_registro",
+    "anio",
+    "mes",
+    "codigo_poliza",
+    "tipo_riesgo",
+    "provincia",
+    "canal_distribucion",
+    "prima_neta",
+    "prima_bruta",
+    "num_polizas_nuevas",
+    "num_polizas_renovadas",
+    "num_polizas_canceladas",
+    "num_siniestros_declarados",
+    "num_siniestros_pagados",
+    "importe_siniestros_bruto",
+    "importe_reservas",
+    "gastos_gestion",
+    "comisiones",
+    "ratio_siniestralidad",
+    "segmento_cliente",
+    "zona_riesgo",
+    "cobertura_principal",
+    "moneda",
+    "fecha_carga",
+]

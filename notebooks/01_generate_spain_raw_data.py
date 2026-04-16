@@ -2,10 +2,14 @@
 # MAGIC %md
 # MAGIC # 01 — Generate Spain Raw Data
 # MAGIC
-# MAGIC Generates 10,000 rows of synthetic Spain property insurance monthly reporting data
-# MAGIC and writes them to `{catalog_name}.{schema_name}.property_insurance_monthly_raw`.
+# MAGIC Generates synthetic Spain property insurance monthly reporting data
+# MAGIC and writes to `{catalog_name}.{schema_name}.property_insurance_monthly_raw`.
 # MAGIC
 # MAGIC The table has **24 Spanish-language columns** representing the local entity schema.
+
+# COMMAND ----------
+
+# MAGIC %run ./_shared_utils
 
 # COMMAND ----------
 
@@ -22,21 +26,16 @@ catalog_name    = dbutils.widgets.get("catalog_name").strip()
 schema_name     = dbutils.widgets.get("schema_name").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
-RAW_TABLE  = f"`{catalog_name}`.`{schema_name}`.`property_insurance_monthly_raw`"
-OPS_TABLE  = f"`{catalog_name}`.`{schema_name}`.`workflow_run_metrics`"
-N_ROWS     = 10_000
-SOURCE_SYSTEM = "ES_PROPERTY_RAW"
+DB        = f"`{catalog_name}`.`{schema_name}`"
+RAW_TABLE = f"{DB}.`property_insurance_monthly_raw`"
+OPS_TABLE = f"{DB}.`workflow_run_metrics`"
+N_ROWS    = 10_000
 
-print("STEP 1 — Parameters loaded")
-print(f"  catalog_name    : {catalog_name}")
-print(f"  schema_name     : {schema_name}")
-print(f"  mapping_version : {mapping_version}")
-print(f"  raw_table       : {RAW_TABLE}")
-print(f"  target_rows     : {N_ROWS:,}")
+print(f"Config: {DB}, rows={N_ROWS:,}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 2 — Imports
+# MAGIC %md ## Imports
 
 # COMMAND ----------
 
@@ -44,18 +43,17 @@ import random
 import datetime
 from uuid import uuid4
 
-from pyspark.sql import functions as F
 from pyspark.sql.types import (
     StructType, StructField,
     LongType, IntegerType, StringType, DoubleType, TimestampType
 )
 
 RUN_ID = str(uuid4())
-print(f"STEP 2 — Imports done. RUN_ID = {RUN_ID}")
+_start = datetime.datetime.utcnow()
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 3 — Define Weighted Lookup Tables
+# MAGIC %md ## Weighted Lookup Tables
 
 # COMMAND ----------
 
@@ -98,17 +96,9 @@ def weighted_choice(options):
     vals, weights = zip(*options)
     return random.choices(vals, weights=weights, k=1)[0]
 
-print("STEP 3 — Lookup tables defined.")
-print(f"  Provincias   : {len(PROVINCIAS)}")
-print(f"  Tipos riesgo : {len(TIPOS_RIESGO)}")
-print(f"  Canales      : {len(CANALES)}")
-print(f"  Segmentos    : {len(SEGMENTOS)}")
-print(f"  Zonas        : {len(ZONAS)}")
-print(f"  Coberturas   : {len(COBERTURAS)}")
-
 # COMMAND ----------
 
-# MAGIC %md ## STEP 4 — Generate Rows
+# MAGIC %md ## Generate Rows
 
 # COMMAND ----------
 
@@ -144,37 +134,23 @@ for i in range(1, N_ROWS + 1):
     fecha_carga = start_date + datetime.timedelta(days=load_offset)
 
     rows.append((
-        i,                                         # id_registro
-        anio,                                      # anio
-        mes,                                       # mes
-        f"ES-{i:05d}-{anio}",                      # codigo_poliza
-        weighted_choice(TIPOS_RIESGO),             # tipo_riesgo
-        weighted_choice(PROVINCIAS),               # provincia
-        weighted_choice(CANALES),                  # canal_distribucion
-        prima_neta,                                # prima_neta
-        prima_bruta,                               # prima_bruta
-        num_polizas_nuevas,                        # num_polizas_nuevas
-        num_polizas_renovadas,                     # num_polizas_renovadas
-        num_polizas_canceladas,                    # num_polizas_canceladas
-        num_siniestros_declarados,                 # num_siniestros_declarados
-        num_siniestros_pagados,                    # num_siniestros_pagados
-        importe_siniestros_bruto,                  # importe_siniestros_bruto
-        importe_reservas,                          # importe_reservas
-        gastos_gestion,                            # gastos_gestion
-        comisiones,                                # comisiones
-        ratio_siniestralidad,                      # ratio_siniestralidad
-        weighted_choice(SEGMENTOS),                # segmento_cliente
-        weighted_choice(ZONAS),                    # zona_riesgo
-        weighted_choice(COBERTURAS),               # cobertura_principal
-        MONEDA,                                    # moneda
-        fecha_carga,                               # fecha_carga
+        i, anio, mes,
+        f"ES-{i:05d}-{anio}",
+        weighted_choice(TIPOS_RIESGO), weighted_choice(PROVINCIAS), weighted_choice(CANALES),
+        prima_neta, prima_bruta,
+        num_polizas_nuevas, num_polizas_renovadas, num_polizas_canceladas,
+        num_siniestros_declarados, num_siniestros_pagados,
+        importe_siniestros_bruto, importe_reservas, gastos_gestion, comisiones,
+        ratio_siniestralidad,
+        weighted_choice(SEGMENTOS), weighted_choice(ZONAS), weighted_choice(COBERTURAS),
+        MONEDA, fecha_carga,
     ))
 
-print(f"STEP 4 — Generated {len(rows):,} rows in Python.")
+print(f"Generated {len(rows):,} rows in Python.")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 5 — Create DataFrame and Write
+# MAGIC %md ## Create DataFrame and Write to Delta
 
 # COMMAND ----------
 
@@ -207,17 +183,6 @@ schema = StructType([
 
 raw_df = spark.createDataFrame(rows, schema=schema)
 
-print(f"STEP 5 — DataFrame created: {raw_df.count():,} rows, {len(raw_df.columns)} columns.")
-print("  Columns:", raw_df.columns)
-
-# COMMAND ----------
-
-# MAGIC %md ## STEP 6 — Write to Delta Table
-
-# COMMAND ----------
-
-print(f"STEP 6 — Writing to {RAW_TABLE} (overwrite + overwriteSchema) ...")
-
 (
     raw_df
     .write
@@ -228,55 +193,21 @@ print(f"STEP 6 — Writing to {RAW_TABLE} (overwrite + overwriteSchema) ...")
 )
 
 final_count = spark.table(RAW_TABLE).count()
-print(f"  Written rows : {final_count:,}")
-print(f"  Table        : {RAW_TABLE}")
+print(f"Written {final_count:,} rows to {RAW_TABLE}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 7 — Sample Output
+# MAGIC %md ## Sample Output
 
 # COMMAND ----------
 
-print("STEP 7 — Sample rows from raw table:")
 display(spark.table(RAW_TABLE).limit(5))
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 8 — Log to workflow_run_metrics
+# MAGIC %md ## Log to workflow_run_metrics
 
 # COMMAND ----------
 
-import datetime as _dt
-
-log_rows = [(
-    RUN_ID,
-    "PT_ES_Column_Mapping_To_Global_Model",
-    "generate_spain_raw_data",
-    "SUCCEEDED",
-    _dt.datetime.utcnow(),
-    _dt.datetime.utcnow(),
-    final_count,
-    f"Generated {final_count:,} synthetic Spain property insurance rows. mapping_version={mapping_version}",
-)]
-
-log_schema = StructType([
-    StructField("run_id",        StringType(),    False),
-    StructField("workflow_name", StringType(),    True),
-    StructField("task_name",     StringType(),    True),
-    StructField("task_status",   StringType(),    True),
-    StructField("started_at",    TimestampType(), True),
-    StructField("finished_at",   TimestampType(), True),
-    StructField("row_count",     LongType(),      True),
-    StructField("message",       StringType(),    True),
-])
-
-log_df = spark.createDataFrame(log_rows, schema=log_schema)
-log_df.write.format("delta").mode("append").saveAsTable(OPS_TABLE)
-
-print(f"STEP 8 — Logged run record to {OPS_TABLE}. RUN_ID={RUN_ID}")
-print()
-print("=" * 60)
-print(f"  01_generate_spain_raw_data COMPLETE")
-print(f"  Rows written : {final_count:,}")
-print(f"  Table        : {RAW_TABLE}")
-print("=" * 60)
+log_run_metric(spark, OPS_TABLE, RUN_ID, "generate_spain_raw_data", "SUCCEEDED", _start, final_count,
+               f"Generated {final_count:,} synthetic Spain property insurance rows. mapping_version={mapping_version}")

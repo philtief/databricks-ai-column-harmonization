@@ -33,8 +33,6 @@ resources:
 
       tags:
         project: column-harmonization
-        domain: insurance
-        country: spain
         pattern: column-mapping-with-app-review
 
       parameters:

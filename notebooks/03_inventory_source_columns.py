@@ -9,6 +9,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./_shared_utils
+
+# COMMAND ----------
+
 # MAGIC %md ## Parameters
 
 # COMMAND ----------
@@ -27,15 +31,11 @@ OPS_TABLE     = f"{DB}.`workflow_run_metrics`"
 SOURCE_SYSTEM = "ES_PROPERTY_RAW"
 SOURCE_TABLE  = "property_insurance_monthly_raw"
 
-print("STEP 1 — Parameters loaded")
-print(f"  catalog_name  : {catalog_name}")
-print(f"  schema_name   : {schema_name}")
-print(f"  raw_table     : {RAW_TABLE}")
-print(f"  inv_table     : {INV_TABLE}")
+print(f"Config: {DB}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 2 — Imports
+# MAGIC %md ## Imports
 
 # COMMAND ----------
 
@@ -48,31 +48,23 @@ from pyspark.sql.types import (
 )
 
 RUN_ID = str(uuid4())
-print(f"STEP 2 — Imports done. RUN_ID = {RUN_ID}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 3 — Read Raw Table Schema
+# MAGIC %md ## Read Raw Table Schema
 
 # COMMAND ----------
-
-print(f"STEP 3 — Reading schema from {RAW_TABLE} ...")
 
 raw_df = spark.table(RAW_TABLE)
 raw_schema = raw_df.schema
 
-print(f"  Found {len(raw_schema.fields)} fields:")
-for i, field in enumerate(raw_schema.fields, 1):
-    nullable_str = "nullable" if field.nullable else "not null"
-    print(f"    [{i:02d}] {field.name}  ({field.dataType.simpleString()}, {nullable_str})")
+print(f"Found {len(raw_schema.fields)} fields in {RAW_TABLE}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 4 — Collect Sample Values Per Column
+# MAGIC %md ## Collect Sample Values Per Column
 
 # COMMAND ----------
-
-print("STEP 4 — Collecting up to 5 non-null distinct sample values per column ...")
 
 _now = _dt.datetime.utcnow()
 inventory_rows = []
@@ -105,17 +97,13 @@ for ordinal, field in enumerate(raw_schema.fields, 1):
         _now,
     ))
 
-    print(f"  [{ordinal:02d}] {col_name}: {len(sample_values)} sample(s) -> {sample_values[:3]}")
-
-print(f"\n  Collected inventory for {len(inventory_rows)} columns.")
+print(f"Collected inventory for {len(inventory_rows)} columns")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 5 — Build DataFrame
+# MAGIC %md ## Build DataFrame
 
 # COMMAND ----------
-
-print("STEP 5 — Building inventory DataFrame ...")
 
 inv_schema = StructType([
     StructField("source_system",     StringType(),              False),
@@ -131,15 +119,13 @@ inv_schema = StructType([
 inv_df = spark.createDataFrame(inventory_rows, schema=inv_schema)
 inv_df.createOrReplaceTempView("_inv_staged")
 
-print(f"  DataFrame rows: {inv_df.count()}")
+print(f"DataFrame rows: {inv_df.count()}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 6 — MERGE into source_column_inventory_es
+# MAGIC %md ## MERGE into source_column_inventory_es
 
 # COMMAND ----------
-
-print(f"STEP 6 — Merging into {INV_TABLE} ...")
 
 spark.sql(f"""
 MERGE INTO {INV_TABLE} AS tgt
@@ -162,15 +148,14 @@ WHEN NOT MATCHED THEN INSERT (
 """)
 
 final_count = spark.table(INV_TABLE).count()
-print(f"  Merge complete. Total rows in {INV_TABLE}: {final_count}")
+print(f"Merge complete. Total rows in {INV_TABLE}: {final_count}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 7 — Display Full Inventory
+# MAGIC %md ## Display Full Inventory
 
 # COMMAND ----------
 
-print("STEP 7 — Full source column inventory:")
 display(
     spark.table(INV_TABLE)
     .orderBy("source_system", "ordinal_position")
@@ -188,40 +173,9 @@ display(
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 8 — Log to workflow_run_metrics
+# MAGIC %md ## Log to workflow_run_metrics
 
 # COMMAND ----------
 
-_done = _dt.datetime.utcnow()
-
-log_schema = StructType([
-    StructField("run_id",        StringType(),    False),
-    StructField("workflow_name", StringType(),    True),
-    StructField("task_name",     StringType(),    True),
-    StructField("task_status",   StringType(),    True),
-    StructField("started_at",    TimestampType(), True),
-    StructField("finished_at",   TimestampType(), True),
-    StructField("row_count",     LongType(),      True),
-    StructField("message",       StringType(),    True),
-])
-
-log_df = spark.createDataFrame([(
-    RUN_ID,
-    "PT_ES_Column_Mapping_To_Global_Model",
-    "inventory_source_columns",
-    "SUCCEEDED",
-    _now,
-    _done,
-    final_count,
-    f"Inventoried {len(inventory_rows)} source columns from {SOURCE_SYSTEM}.{SOURCE_TABLE}. Total inventory rows: {final_count}.",
-)], schema=log_schema)
-
-log_df.write.format("delta").mode("append").saveAsTable(OPS_TABLE)
-
-print(f"STEP 8 — Logged run record to {OPS_TABLE}. RUN_ID={RUN_ID}")
-print()
-print("=" * 60)
-print("  03_inventory_source_columns COMPLETE")
-print(f"  Columns inventoried : {len(inventory_rows)}")
-print(f"  Inventory table rows: {final_count}")
-print("=" * 60)
+log_run_metric(spark, OPS_TABLE, RUN_ID, "inventory_source_columns", "SUCCEEDED", _now, final_count,
+               f"Inventoried {len(inventory_rows)} source columns from {SOURCE_SYSTEM}.{SOURCE_TABLE}. Total inventory rows: {final_count}.")

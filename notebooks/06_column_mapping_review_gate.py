@@ -19,6 +19,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./_shared_utils
+
+# COMMAND ----------
+
 # MAGIC %md ## Parameters
 
 # COMMAND ----------
@@ -35,42 +39,34 @@ CAND_TABLE    = f"{DB}.`column_mapping_candidates_es`"
 OPS_TABLE     = f"{DB}.`workflow_run_metrics`"
 SOURCE_SYSTEM = "ES_PROPERTY_RAW"
 
-MANDATORY_COLUMNS = [
+_cfg = load_harmonization_config()
+MANDATORY_COLUMNS = _cfg["mandatory_source_columns"] if _cfg else [
     "id_registro", "anio", "mes", "codigo_poliza", "tipo_riesgo",
     "provincia", "canal_distribucion", "prima_neta", "prima_bruta",
     "num_siniestros_declarados", "num_siniestros_pagados",
     "segmento_cliente", "cobertura_principal", "moneda",
 ]
 
-print("STEP 1 — Parameters loaded")
-print(f"  catalog_name      : {catalog_name}")
-print(f"  schema_name       : {schema_name}")
-print(f"  candidates table  : {CAND_TABLE}")
-print(f"  mandatory columns : {len(MANDATORY_COLUMNS)}")
+print(f"Config: {DB}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 2 — Imports
+# MAGIC %md ## Imports
 
 # COMMAND ----------
 
 import datetime as _dt
 from uuid import uuid4
 from pyspark.sql import functions as F
-from pyspark.sql.types import StructType, StructField, StringType, LongType, TimestampType
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
 
-print(f"STEP 2 — Imports done. RUN_ID = {RUN_ID}")
-
 # COMMAND ----------
 
-# MAGIC %md ## STEP 3 — Overall Status Summary
+# MAGIC %md ## Overall Status Summary
 
 # COMMAND ----------
-
-print("STEP 3 — Overall column mapping candidate status summary:")
 
 all_candidates_df = spark.sql(f"""
 SELECT
@@ -87,11 +83,9 @@ display(all_candidates_df)
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 4 — Check Blocking Conditions
+# MAGIC %md ## Check Blocking Conditions
 
 # COMMAND ----------
-
-print("STEP 4 — Checking blocking conditions for mandatory columns ...")
 
 # Condition A: Mandatory columns that are still PENDING
 blocking_pending_df = spark.sql(f"""
@@ -144,17 +138,13 @@ found_mandatory_cols = set(
 
 missing_mandatory = [c for c in MANDATORY_COLUMNS if c not in found_mandatory_cols]
 
-print(f"  Mandatory PENDING (blocking): {len(pending_blocking)}")
-print(f"  Mandatory REJECTED with no target (blocking): {len(rejected_blocking)}")
-print(f"  Mandatory columns missing from candidates: {len(missing_mandatory)}")
+print(f"Mandatory PENDING: {len(pending_blocking)}, REJECTED no target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 5 — Print Diagnostic Table
+# MAGIC %md ## Diagnostic Table
 
 # COMMAND ----------
-
-print("STEP 5 — Full mandatory column status:")
 
 mandatory_status_df = spark.sql(f"""
 SELECT
@@ -177,7 +167,7 @@ display(mandatory_status_df)
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 6 — Gate Decision
+# MAGIC %md ## Gate Decision
 
 # COMMAND ----------
 
@@ -187,65 +177,25 @@ blocking_count = len(pending_blocking) + len(rejected_blocking) + len(missing_ma
 if blocking_count > 0:
     gate_status = "BLOCKED"
 
-print(f"STEP 6 — Gate decision: {gate_status}")
+print(f"Gate decision: {gate_status}")
 
 if gate_status == "BLOCKED":
-    print()
-    print("  BLOCKING ISSUES:")
-    if pending_blocking:
-        print(f"  [{len(pending_blocking)}] Mandatory columns still PENDING review:")
-        for row in pending_blocking:
-            print(f"      - {row['local_column_name']} (proposed: {row['proposed_global_column_name']}, confidence: {row['confidence']})")
-    if rejected_blocking:
-        print(f"  [{len(rejected_blocking)}] Mandatory columns REJECTED with no final mapping target:")
-        for row in rejected_blocking:
-            print(f"      - {row['local_column_name']}")
-    if missing_mandatory:
-        print(f"  [{len(missing_mandatory)}] Mandatory columns not found in candidates at all:")
-        for col in missing_mandatory:
-            print(f"      - {col}")
+    print(f"  BLOCKING: {len(pending_blocking)} PENDING, {len(rejected_blocking)} REJECTED no target, {len(missing_mandatory)} missing")
 else:
-    print()
-    print("  All 14 mandatory columns have an approved or corrected mapping.")
-    print("  Workflow may proceed to build_column_mapping_dictionary.")
+    print("  All mandatory columns have an approved or corrected mapping.")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 7 — Log Gate Result to workflow_run_metrics
+# MAGIC %md ## Log Gate Result to workflow_run_metrics
 
 # COMMAND ----------
 
-_end = _dt.datetime.utcnow()
-
-log_schema = StructType([
-    StructField("run_id",        StringType(),    False),
-    StructField("workflow_name", StringType(),    True),
-    StructField("task_name",     StringType(),    True),
-    StructField("task_status",   StringType(),    True),
-    StructField("started_at",    TimestampType(), True),
-    StructField("finished_at",   TimestampType(), True),
-    StructField("row_count",     LongType(),      True),
-    StructField("message",       StringType(),    True),
-])
-
-log_df = spark.createDataFrame([(
-    RUN_ID,
-    "PT_ES_Column_Mapping_To_Global_Model",
-    "column_mapping_review_gate",
-    gate_status,
-    _start,
-    _end,
-    blocking_count,
-    f"Gate {gate_status}. Blocking issues: {blocking_count}. Pending: {len(pending_blocking)}, Rejected-no-target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}.",
-)], schema=log_schema)
-
-log_df.write.format("delta").mode("append").saveAsTable(OPS_TABLE)
-
-print(f"STEP 7 — Logged gate result '{gate_status}' to {OPS_TABLE}. RUN_ID={RUN_ID}")
+log_run_metric(spark, OPS_TABLE, RUN_ID, "column_mapping_review_gate", gate_status, _start, blocking_count,
+               f"Gate {gate_status}. Blocking issues: {blocking_count}. Pending: {len(pending_blocking)}, Rejected-no-target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}.")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 8 — Raise Exception if Blocked
+# MAGIC %md ## Raise Exception if Blocked
 
 # COMMAND ----------
 
@@ -259,9 +209,4 @@ if gate_status == "BLOCKED":
         f"Missing from candidates: {missing_mandatory}."
     )
 
-print()
-print("=" * 60)
-print("  06_column_mapping_review_gate PASSED")
-print("  All mandatory columns are approved. Proceeding to")
-print("  07_build_column_mapping_dictionary.")
-print("=" * 60)
+print("Gate PASSED. Proceeding to 07_build_column_mapping_dictionary.")

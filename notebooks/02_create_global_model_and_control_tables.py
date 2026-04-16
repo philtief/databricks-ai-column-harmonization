@@ -3,16 +3,14 @@
 # MAGIC # 02 — Create Global Model and Control Tables
 # MAGIC
 # MAGIC Creates all tables, views, and prepopulates the `global_target_columns` reference table.
-# MAGIC
 # MAGIC All objects live under `{catalog_name}.{schema_name}` (single schema).
 # MAGIC
-# MAGIC **Tables created:**
-# MAGIC - Data: `property_insurance_monthly_raw`, `property_insurance_monthly`
-# MAGIC - Column mapping: `source_column_inventory_es`, `global_target_columns`, `column_mapping_candidates_es`, `column_mapping_dictionary_es`, `column_mapping_audit_es`
-# MAGIC - Value mapping: `value_mapping_candidates_es`, `value_mapping_dictionary_es`
-# MAGIC - Ops: `workflow_run_metrics`, `ai_mapping_usage_metrics`, `data_quality_results`
-# MAGIC
-# MAGIC **Views created:** `vw_pending_column_mappings`, `vw_mapping_review_summary`, `vw_publish_readiness`, `vw_column_mapping_low_conf_es`, `vw_column_mapping_coverage_es`
+# MAGIC **Tables:** raw, harmonized, column/value mapping control, ops.
+# MAGIC **Views:** pending mappings, review summary, publish readiness, low confidence, coverage.
+
+# COMMAND ----------
+
+# MAGIC %run ./_shared_utils
 
 # COMMAND ----------
 
@@ -28,15 +26,17 @@ catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name  = dbutils.widgets.get("schema_name").strip()
 
 DB = f"`{catalog_name}`.`{schema_name}`"
+OPS_TABLE = f"{DB}.`workflow_run_metrics`"
 
-print("STEP 1 — Parameters loaded")
-print(f"  catalog_name : {catalog_name}")
-print(f"  schema_name  : {schema_name}")
-print(f"  DB prefix    : {DB}")
+from uuid import uuid4
+RUN_ID = str(uuid4())
+_start = _dt.datetime.utcnow()
+
+print(f"Config: {DB}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 2 — DDL Helper
+# MAGIC %md ## DDL Helper
 
 # COMMAND ----------
 
@@ -53,19 +53,12 @@ def execute_ddl(label, sql):
         print(f"  [ERR] {label}: {e}")
         raise
 
-print("STEP 2 — DDL helper ready.")
+# COMMAND ----------
+
+# MAGIC %md ## Data Tables
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 3 — Data Tables
-
-# COMMAND ----------
-
-print("STEP 3 — Creating data tables ...")
-
-# ------------------------------------------------------------------
-# property_insurance_monthly_raw
-# ------------------------------------------------------------------
 execute_ddl("property_insurance_monthly_raw", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`property_insurance_monthly_raw` (
   id_registro               BIGINT   COMMENT 'Unique record identifier',
@@ -97,9 +90,6 @@ USING DELTA
 COMMENT 'Spain property insurance monthly raw data — 24 local Spanish columns. Source system: ES_PROPERTY_RAW.'
 """)
 
-# ------------------------------------------------------------------
-# property_insurance_monthly  (harmonized output — 23 business + 5 metadata)
-# ------------------------------------------------------------------
 execute_ddl("property_insurance_monthly", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`property_insurance_monthly` (
   record_id                   BIGINT    COMMENT 'Unique identifier for each record',
@@ -137,15 +127,10 @@ COMMENT 'Harmonized property insurance monthly data — global English column na
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 4 — Column-Mapping Control Tables
+# MAGIC %md ## Column-Mapping Control Tables
 
 # COMMAND ----------
 
-print("STEP 4 — Creating column-mapping control tables ...")
-
-# ------------------------------------------------------------------
-# source_column_inventory_es
-# ------------------------------------------------------------------
 execute_ddl("source_column_inventory_es", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`source_column_inventory_es` (
   source_system      STRING           COMMENT 'Source system identifier e.g. ES_PROPERTY_RAW',
@@ -161,9 +146,6 @@ USING DELTA
 COMMENT 'Inventory of all source columns detected in the Spain raw table, with sample values for AI mapping.'
 """)
 
-# ------------------------------------------------------------------
-# global_target_columns
-# ------------------------------------------------------------------
 execute_ddl("global_target_columns", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`global_target_columns` (
   target_table        STRING        COMMENT 'Harmonized target table name',
@@ -176,12 +158,9 @@ CREATE TABLE IF NOT EXISTS {DB}.`global_target_columns` (
   created_at          TIMESTAMP     COMMENT 'When this column definition was created'
 )
 USING DELTA
-COMMENT 'Authoritative global English column definitions. Shared across all source countries. Source countries map their local columns to these targets.'
+COMMENT 'Authoritative global English column definitions. Shared across all source countries.'
 """)
 
-# ------------------------------------------------------------------
-# column_mapping_candidates_es
-# ------------------------------------------------------------------
 execute_ddl("column_mapping_candidates_es", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_candidates_es` (
   candidate_id               BIGINT    COMMENT 'Surrogate row identifier',
@@ -208,12 +187,9 @@ CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_candidates_es` (
   updated_at                 TIMESTAMP COMMENT 'When this candidate was last updated'
 )
 USING DELTA
-COMMENT 'AI-proposed column mapping candidates for Spain source columns. Human reviewers approve, correct, or reject each row before mappings are promoted to the dictionary.'
+COMMENT 'AI-proposed column mapping candidates for Spain source columns. Human reviewers approve, correct, or reject each row.'
 """)
 
-# ------------------------------------------------------------------
-# column_mapping_dictionary_es
-# ------------------------------------------------------------------
 execute_ddl("column_mapping_dictionary_es", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_dictionary_es` (
   source_system      STRING    COMMENT 'Source system identifier',
@@ -230,12 +206,9 @@ CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_dictionary_es` (
   updated_at         TIMESTAMP COMMENT 'When this dictionary entry was last updated'
 )
 USING DELTA
-COMMENT 'Approved column mapping dictionary. Maps each local Spanish column name to its global English equivalent. Drives the core transformation notebook.'
+COMMENT 'Approved column mapping dictionary. Maps each local Spanish column name to its global English equivalent.'
 """)
 
-# ------------------------------------------------------------------
-# column_mapping_audit_es
-# ------------------------------------------------------------------
 execute_ddl("column_mapping_audit_es", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_audit_es` (
   audit_id              BIGINT    COMMENT 'Audit event surrogate identifier',
@@ -257,11 +230,9 @@ COMMENT 'Immutable audit trail of every review action performed on column_mappin
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 4b — Schema Migration (Idempotent Column Additions)
+# MAGIC %md ## Schema Migration (Idempotent Column Additions)
 
 # COMMAND ----------
-
-print("STEP 4b — Applying schema migrations (add new columns to existing tables if missing) ...")
 
 def _add_column_if_missing(table_ref, col_name, col_type, col_comment):
     """Add a column to an existing Delta table only if it does not already exist."""
@@ -288,19 +259,12 @@ _add_column_if_missing(
     "Source of the action: DATABRICKS_APP | SQL_DIRECT"
 )
 
-print("STEP 4b — Schema migration complete.")
+# COMMAND ----------
+
+# MAGIC %md ## Value-Mapping Control Tables
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 5 — Value-Mapping Control Tables
-
-# COMMAND ----------
-
-print("STEP 5 — Creating value-mapping control tables (secondary / optional) ...")
-
-# ------------------------------------------------------------------
-# value_mapping_candidates_es
-# ------------------------------------------------------------------
 execute_ddl("value_mapping_candidates_es", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_candidates_es` (
   candidate_id              BIGINT    COMMENT 'Surrogate row identifier',
@@ -319,12 +283,9 @@ CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_candidates_es` (
   updated_at                TIMESTAMP COMMENT 'When this candidate was last updated'
 )
 USING DELTA
-COMMENT 'Optional value translation candidates. Spanish categorical values proposed for English equivalents. Secondary to column mapping.'
+COMMENT 'Optional value translation candidates. Spanish categorical values proposed for English equivalents.'
 """)
 
-# ------------------------------------------------------------------
-# value_mapping_dictionary_es
-# ------------------------------------------------------------------
 execute_ddl("value_mapping_dictionary_es", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_dictionary_es` (
   source_field       STRING    COMMENT 'Global field name',
@@ -339,20 +300,15 @@ CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_dictionary_es` (
   updated_at         TIMESTAMP COMMENT 'When this entry was last updated'
 )
 USING DELTA
-COMMENT 'Approved value translation dictionary. Maps Spanish categorical values to English equivalents. Optional secondary step.'
+COMMENT 'Approved value translation dictionary. Maps Spanish categorical values to English equivalents.'
 """)
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 6 — Ops Tables
+# MAGIC %md ## Ops Tables
 
 # COMMAND ----------
 
-print("STEP 6 — Creating ops tables ...")
-
-# ------------------------------------------------------------------
-# workflow_run_metrics
-# ------------------------------------------------------------------
 execute_ddl("workflow_run_metrics", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`workflow_run_metrics` (
   run_id        STRING    COMMENT 'UUID run identifier',
@@ -368,9 +324,6 @@ USING DELTA
 COMMENT 'Per-task run telemetry for all workflow notebooks.'
 """)
 
-# ------------------------------------------------------------------
-# ai_mapping_usage_metrics
-# ------------------------------------------------------------------
 execute_ddl("ai_mapping_usage_metrics", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`ai_mapping_usage_metrics` (
   run_id                   STRING    COMMENT 'UUID run identifier',
@@ -389,9 +342,6 @@ USING DELTA
 COMMENT 'AI endpoint usage statistics and cost estimates per run.'
 """)
 
-# ------------------------------------------------------------------
-# data_quality_results
-# ------------------------------------------------------------------
 execute_ddl("data_quality_results", f"""
 CREATE TABLE IF NOT EXISTS {DB}.`data_quality_results` (
   run_id       STRING    COMMENT 'UUID run identifier',
@@ -407,29 +357,17 @@ COMMENT 'Data quality check results per pipeline run.'
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 7 — Views
+# MAGIC %md ## Views
 
 # COMMAND ----------
-
-print("STEP 7 — Creating views ...")
 
 execute_ddl("vw_pending_column_mappings", f"""
 CREATE OR REPLACE VIEW {DB}.`vw_pending_column_mappings` AS
 SELECT
-  candidate_id,
-  source_system,
-  local_column_name,
-  local_data_type,
-  local_sample_values,
-  proposed_global_column_name,
-  proposed_global_data_type,
-  proposed_match_type,
-  mapping_rationale,
-  confidence,
-  ai_error_status,
-  review_status,
-  mandatory_flag,
-  created_at
+  candidate_id, source_system, local_column_name, local_data_type,
+  local_sample_values, proposed_global_column_name, proposed_global_data_type,
+  proposed_match_type, mapping_rationale, confidence, ai_error_status,
+  review_status, mandatory_flag, created_at
 FROM {DB}.`column_mapping_candidates_es`
 WHERE review_status = 'PENDING'
 ORDER BY mandatory_flag DESC, confidence DESC, local_column_name
@@ -438,9 +376,7 @@ ORDER BY mandatory_flag DESC, confidence DESC, local_column_name
 execute_ddl("vw_mapping_review_summary", f"""
 CREATE OR REPLACE VIEW {DB}.`vw_mapping_review_summary` AS
 SELECT
-  review_status,
-  mandatory_flag,
-  confidence,
+  review_status, mandatory_flag, confidence,
   COUNT(*) AS count,
   SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
 FROM {DB}.`column_mapping_candidates_es`
@@ -451,12 +387,8 @@ execute_ddl("vw_publish_readiness", f"""
 CREATE OR REPLACE VIEW {DB}.`vw_publish_readiness` AS
 WITH mandatory AS (
   SELECT local_column_name AS mandatory_column_name,
-         review_status,
-         final_global_column_name,
-         final_match_type,
-         reviewed_by,
-         reviewed_at,
-         app_decision_source,
+         review_status, final_global_column_name, final_match_type,
+         reviewed_by, reviewed_at, app_decision_source,
          CASE WHEN review_status IN ('APPROVED','CORRECTED') THEN TRUE ELSE FALSE END AS is_ready
   FROM {DB}.`column_mapping_candidates_es`
   WHERE mandatory_flag = TRUE
@@ -468,17 +400,9 @@ ORDER BY is_ready ASC, mandatory_column_name
 execute_ddl("vw_column_mapping_low_conf_es", f"""
 CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_low_conf_es` AS
 SELECT
-  candidate_id,
-  source_system,
-  local_column_name,
-  local_data_type,
-  proposed_global_column_name,
-  proposed_match_type,
-  confidence,
-  ai_error_status,
-  review_status,
-  mandatory_flag,
-  mapping_rationale
+  candidate_id, source_system, local_column_name, local_data_type,
+  proposed_global_column_name, proposed_match_type, confidence,
+  ai_error_status, review_status, mandatory_flag, mapping_rationale
 FROM {DB}.`column_mapping_candidates_es`
 WHERE UPPER(confidence) = 'LOW' OR ai_error_status IS NOT NULL
 ORDER BY mandatory_flag DESC, local_column_name
@@ -487,15 +411,9 @@ ORDER BY mandatory_flag DESC, local_column_name
 execute_ddl("vw_column_mapping_coverage_es", f"""
 CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_coverage_es` AS
 SELECT
-  g.global_column_name,
-  g.global_data_type,
-  g.semantic_group,
-  g.required_flag,
-  g.business_definition,
-  c.local_column_name,
-  c.proposed_match_type,
-  c.confidence,
-  c.review_status,
+  g.global_column_name, g.global_data_type, g.semantic_group,
+  g.required_flag, g.business_definition,
+  c.local_column_name, c.proposed_match_type, c.confidence, c.review_status,
   CASE
     WHEN c.review_status IN ('APPROVED','CORRECTED') THEN 'MAPPED'
     WHEN c.review_status = 'REJECTED'               THEN 'REJECTED'
@@ -511,43 +429,55 @@ ORDER BY g.semantic_group, g.global_column_name
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 8 — Prepopulate global_target_columns
+# MAGIC %md ## Prepopulate global_target_columns
+# MAGIC
+# MAGIC Loads the target data model from `config/harmonization_config.yaml`.
+# MAGIC Each column's name, type, description, and examples are used by the AI
+# MAGIC in notebook 04 to propose column mappings.
 
 # COMMAND ----------
 
-print("STEP 8 — Prepopulating global_target_columns (idempotent merge) ...")
-
-import datetime as _dt
-from pyspark.sql.types import StructType, StructField, StringType, ArrayType, BooleanType, TimestampType
+from pyspark.sql.types import ArrayType, BooleanType
 
 _now = _dt.datetime.utcnow()
-_target_table = "property_insurance_monthly"
 
-global_cols = [
-    ("record_id",                 "BIGINT",  "Unique identifier for each record",                               ["1","2","3"],                                                    True,  "identity"),
-    ("reporting_year",            "INT",     "Calendar year of the reporting period",                           ["2022","2023","2024","2025"],                                    True,  "time"),
-    ("reporting_month",           "INT",     "Month number 1-12 of the reporting period",                       ["1","6","12"],                                                   True,  "time"),
-    ("policy_number",             "STRING",  "Unique policy identifier",                                        ["ES-1001-2022","ES-5000-2024"],                                  True,  "policy"),
-    ("risk_type",                 "STRING",  "Category of insured risk",                                        ["Fire","Flood","Theft","Water Damage"],                          True,  "risk"),
-    ("region",                    "STRING",  "Geographic region or province",                                   ["Madrid","Barcelona","Valencia"],                                True,  "geography"),
-    ("distribution_channel",      "STRING",  "Channel through which policy was sold",                           ["Agent","Broker","Direct","Bancassurance"],                      True,  "distribution"),
-    ("net_written_premium_eur",   "DOUBLE",  "Net written premium in EUR after reinsurance",                    ["500.0","1200.5","3000.0"],                                      True,  "premium"),
-    ("gross_written_premium_eur", "DOUBLE",  "Gross written premium in EUR before reinsurance",                 ["600.0","1500.0","4000.0"],                                      True,  "premium"),
-    ("new_policies_count",        "INT",     "Number of new policies in period",                                ["1","5","12"],                                                   True,  "policy_count"),
-    ("renewed_policies_count",    "INT",     "Number of policies renewed in period",                            ["10","25","50"],                                                 True,  "policy_count"),
-    ("cancelled_policies_count",  "INT",     "Number of policies cancelled in period",                          ["0","1","3"],                                                    True,  "policy_count"),
-    ("claims_reported_count",     "INT",     "Total claims notified in period",                                 ["0","1","5"],                                                    True,  "claims"),
-    ("claims_paid_count",         "INT",     "Number of claims settled and paid",                               ["0","1","4"],                                                    True,  "claims"),
-    ("gross_claims_incurred_eur", "DOUBLE",  "Total gross claims incurred in EUR",                              ["200.0","800.0","2500.0"],                                       True,  "claims"),
-    ("claims_reserve_eur",        "DOUBLE",  "Claims reserve amount at reporting date in EUR",                  ["50.0","200.0","600.0"],                                         False, "claims"),
-    ("management_expenses_eur",   "DOUBLE",  "Internal management expenses in EUR",                             ["30.0","100.0","350.0"],                                         True,  "expenses"),
-    ("commissions_eur",           "DOUBLE",  "Commissions paid to distribution partners in EUR",                ["50.0","150.0","400.0"],                                         True,  "expenses"),
-    ("loss_ratio",                "DOUBLE",  "Ratio of claims incurred to gross written premium",               ["0.35","0.65","1.10"],                                           False, "kpi"),
-    ("customer_segment",          "STRING",  "Segment classification of policyholder",                          ["Individual","Small Business","Large Enterprise"],               True,  "customer"),
-    ("risk_zone",                 "STRING",  "Risk zone classification",                                        ["Zone A","Zone B","Zone C"],                                     True,  "risk"),
-    ("primary_coverage",          "STRING",  "Primary coverage type in the policy",                             ["Building","Contents","Both"],                                   True,  "coverage"),
-    ("currency",                  "STRING",  "ISO currency code for monetary amounts",                          ["EUR"],                                                          True,  "monetary"),
-]
+# Load target columns from config (fallback to hardcoded defaults)
+_cfg = load_harmonization_config()
+if _cfg:
+    _target_table = _cfg["target_model"]["table_name"]
+    global_cols = [
+        (c["name"], c["type"], c["description"], c.get("examples", []), c.get("required", False), c.get("semantic_group", ""))
+        for c in _cfg["target_model"]["columns"]
+    ]
+else:
+    _target_table = "property_insurance_monthly"
+    global_cols = [
+        ("record_id", "BIGINT", "Unique identifier for each record", ["1","2","3"], True, "identity"),
+        ("reporting_year", "INT", "Calendar year of the reporting period", ["2022","2023","2024","2025"], True, "time"),
+        ("reporting_month", "INT", "Month number 1-12 of the reporting period", ["1","6","12"], True, "time"),
+        ("policy_number", "STRING", "Unique policy identifier", ["ES-1001-2022","ES-5000-2024"], True, "policy"),
+        ("risk_type", "STRING", "Category of insured risk", ["Fire","Flood","Theft","Water Damage"], True, "risk"),
+        ("region", "STRING", "Geographic region or province", ["Madrid","Barcelona","Valencia"], True, "geography"),
+        ("distribution_channel", "STRING", "Channel through which policy was sold", ["Agent","Broker","Direct","Bancassurance"], True, "distribution"),
+        ("net_written_premium_eur", "DOUBLE", "Net written premium in EUR after reinsurance", ["500.0","1200.5","3000.0"], True, "premium"),
+        ("gross_written_premium_eur", "DOUBLE", "Gross written premium in EUR before reinsurance", ["600.0","1500.0","4000.0"], True, "premium"),
+        ("new_policies_count", "INT", "Number of new policies in period", ["1","5","12"], True, "policy_count"),
+        ("renewed_policies_count", "INT", "Number of policies renewed in period", ["10","25","50"], True, "policy_count"),
+        ("cancelled_policies_count", "INT", "Number of policies cancelled in period", ["0","1","3"], True, "policy_count"),
+        ("claims_reported_count", "INT", "Total claims notified in period", ["0","1","5"], True, "claims"),
+        ("claims_paid_count", "INT", "Number of claims settled and paid", ["0","1","4"], True, "claims"),
+        ("gross_claims_incurred_eur", "DOUBLE", "Total gross claims incurred in EUR", ["200.0","800.0","2500.0"], True, "claims"),
+        ("claims_reserve_eur", "DOUBLE", "Claims reserve amount at reporting date in EUR", ["50.0","200.0","600.0"], False, "claims"),
+        ("management_expenses_eur", "DOUBLE", "Internal management expenses in EUR", ["30.0","100.0","350.0"], True, "expenses"),
+        ("commissions_eur", "DOUBLE", "Commissions paid to distribution partners in EUR", ["50.0","150.0","400.0"], True, "expenses"),
+        ("loss_ratio", "DOUBLE", "Ratio of claims incurred to gross written premium", ["0.35","0.65","1.10"], False, "kpi"),
+        ("customer_segment", "STRING", "Segment classification of policyholder", ["Individual","Small Business","Large Enterprise"], True, "customer"),
+        ("risk_zone", "STRING", "Risk zone classification", ["Zone A","Zone B","Zone C"], True, "risk"),
+        ("primary_coverage", "STRING", "Primary coverage type in the policy", ["Building","Contents","Both"], True, "coverage"),
+        ("currency", "STRING", "ISO currency code for monetary amounts", ["EUR"], True, "monetary"),
+    ]
+
+print(f"Target model: {_target_table}, {len(global_cols)} columns (source: {'config' if _cfg else 'defaults'})")
 
 gtc_schema = StructType([
     StructField("target_table",        StringType(),              False),
@@ -589,93 +519,27 @@ WHEN NOT MATCHED THEN INSERT (
 """)
 
 gtc_count = spark.table(f"{DB}.`global_target_columns`").count()
-print(f"  global_target_columns rows: {gtc_count}")
+print(f"global_target_columns: {gtc_count} rows")
 display(spark.table(f"{DB}.`global_target_columns`").orderBy("semantic_group", "global_column_name"))
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 9 — Summary
+# MAGIC %md ## Summary
 
 # COMMAND ----------
 
-print("STEP 9 — Summary of all created objects:")
-print()
-print(f"  Schema : {catalog_name}.{schema_name}")
-print()
-print("  DATA TABLES:")
-print("    property_insurance_monthly_raw   — 24 Spanish source columns")
-print("    property_insurance_monthly       — 28 cols (23 business + 5 metadata)")
-print()
-print("  COLUMN-MAPPING CONTROL TABLES:")
-print("    source_column_inventory_es")
-print("    global_target_columns            — prepopulated with 23 target columns")
-print("    column_mapping_candidates_es")
-print("    column_mapping_dictionary_es")
-print("    column_mapping_audit_es")
-print()
-print("  VALUE-MAPPING CONTROL TABLES (optional):")
-print("    value_mapping_candidates_es")
-print("    value_mapping_dictionary_es")
-print()
-print("  OPS TABLES:")
-print("    workflow_run_metrics")
-print("    ai_mapping_usage_metrics")
-print("    data_quality_results")
-print()
-print("  VIEWS:")
-print("    vw_pending_column_mappings       — pending review candidates (for Databricks App)")
-print("    vw_mapping_review_summary        — aggregated counts by status/mandatory/confidence")
-print("    vw_publish_readiness             — mandatory columns with readiness flag")
-print("    vw_column_mapping_low_conf_es    — low confidence / AI error candidates")
-print("    vw_column_mapping_coverage_es    — global model coverage status")
-print()
-
 ok_count  = sum(1 for r in results if r[0] == "OK")
 err_count = sum(1 for r in results if r[0] == "ERROR")
-print(f"  DDL results: {ok_count} OK, {err_count} ERROR")
+print(f"DDL results: {ok_count} OK, {err_count} ERROR")
 
 if err_count > 0:
     raise Exception(f"DDL creation had {err_count} errors. Review output above.")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 10 — Log to workflow_run_metrics
+# MAGIC %md ## Log to workflow_run_metrics
 
 # COMMAND ----------
 
-import datetime as _dt2
-from uuid import uuid4
-from pyspark.sql.types import StructType, StructField, StringType, LongType, TimestampType
-
-RUN_ID = str(uuid4())
-_now2 = _dt2.datetime.utcnow()
-
-log_schema = StructType([
-    StructField("run_id",        StringType(),    False),
-    StructField("workflow_name", StringType(),    True),
-    StructField("task_name",     StringType(),    True),
-    StructField("task_status",   StringType(),    True),
-    StructField("started_at",    TimestampType(), True),
-    StructField("finished_at",   TimestampType(), True),
-    StructField("row_count",     LongType(),      True),
-    StructField("message",       StringType(),    True),
-])
-
-log_df = spark.createDataFrame([(
-    RUN_ID,
-    "PT_ES_Column_Mapping_To_Global_Model",
-    "create_global_model_and_control_tables",
-    "SUCCEEDED",
-    _now2,
-    _now2,
-    gtc_count,
-    f"Created all tables and views. global_target_columns prepopulated with {gtc_count} rows.",
-)], schema=log_schema)
-
-log_df.write.format("delta").mode("append").saveAsTable(f"{DB}.`workflow_run_metrics`")
-
-print(f"STEP 10 — Logged run record. RUN_ID={RUN_ID}")
-print()
-print("=" * 60)
-print("  02_create_global_model_and_control_tables COMPLETE")
-print("=" * 60)
+log_run_metric(spark, OPS_TABLE, RUN_ID, "create_global_model_and_control_tables", "SUCCEEDED", _start, gtc_count,
+               f"Created all tables and views. global_target_columns prepopulated with {gtc_count} rows.")

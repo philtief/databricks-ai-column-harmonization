@@ -13,6 +13,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./_shared_utils
+
+# COMMAND ----------
+
 # MAGIC %md ## Parameters
 
 # COMMAND ----------
@@ -35,13 +39,7 @@ HARM_TABLE     = f"{DB}.`property_insurance_monthly`"
 OPS_TABLE      = f"{DB}.`workflow_run_metrics`"
 SOURCE_SYSTEM  = "ES_PROPERTY_RAW"
 
-print("STEP 1 — Parameters loaded")
-print(f"  catalog_name    : {catalog_name}")
-print(f"  schema_name     : {schema_name}")
-print(f"  source_country  : {source_country}")
-print(f"  mapping_version : {mapping_version}")
-print(f"  raw_table       : {RAW_TABLE}")
-print(f"  harm_table      : {HARM_TABLE}")
+print(f"Config: {DB}")
 
 # COMMAND ----------
 
@@ -52,20 +50,15 @@ print(f"  harm_table      : {HARM_TABLE}")
 import datetime as _dt
 from uuid import uuid4
 from pyspark.sql import functions as F
-from pyspark.sql.types import StructType, StructField, StringType, LongType, TimestampType
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
-
-print(f"STEP 2 — Imports done. RUN_ID = {RUN_ID}")
 
 # COMMAND ----------
 
 # MAGIC %md ## STEP 3 — Load Approved Column Mapping Dictionary
 
 # COMMAND ----------
-
-print(f"STEP 3 — Loading active column mapping dictionary from {DICT_TABLE} ...")
 
 dict_df = spark.sql(f"""
 SELECT
@@ -85,9 +78,7 @@ ORDER BY local_column_name
 dict_rows = dict_df.collect()
 active_mappings = {row["local_column_name"]: row["global_column_name"] for row in dict_rows}
 
-print(f"  Active mappings loaded: {len(active_mappings)}")
-for local_col, global_col in sorted(active_mappings.items()):
-    print(f"    {local_col:35s} -> {global_col}")
+print(f"Active mappings loaded: {len(active_mappings)}")
 
 if not active_mappings:
     raise Exception(
@@ -101,23 +92,17 @@ if not active_mappings:
 
 # COMMAND ----------
 
-print(f"STEP 4 — Loading raw source table from {RAW_TABLE} ...")
-
 raw_df = spark.table(RAW_TABLE)
 raw_count = raw_df.count()
 raw_columns = set(raw_df.columns)
 
-print(f"  Raw rows    : {raw_count:,}")
-print(f"  Raw columns : {len(raw_columns)}")
-print(f"  Columns     : {sorted(raw_columns)}")
+print(f"Raw rows: {raw_count:,}, columns: {len(raw_columns)}")
 
 # COMMAND ----------
 
 # MAGIC %md ## STEP 5 — Build Dynamic Select Expressions
 
 # COMMAND ----------
-
-print("STEP 5 — Building dynamic column rename expressions ...")
 
 select_exprs = []
 mapped_cols = []
@@ -136,17 +121,13 @@ for raw_col in sorted(raw_columns):
     if raw_col not in active_mappings:
         print(f"  INFO: Raw column '{raw_col}' has no active dictionary mapping — excluded from harmonized output.")
 
-print(f"\n  Mapped columns  : {len(mapped_cols)}")
-print(f"  Unmapped (dict entry not in raw): {len(unmapped_cols)}")
-print(f"  Excluded (no dict entry): {len(raw_columns) - len(mapped_cols)}")
+print(f"Mapped: {len(mapped_cols)}, unmapped: {len(unmapped_cols)}, excluded: {len(raw_columns) - len(mapped_cols)}")
 
 # COMMAND ----------
 
 # MAGIC %md ## STEP 6 — Build Harmonized DataFrame
 
 # COMMAND ----------
-
-print("STEP 6 — Building harmonized DataFrame ...")
 
 # Apply column renames from dictionary
 harmonized_df = raw_df.select(select_exprs)
@@ -164,17 +145,13 @@ harmonized_df = (
 harm_count = harmonized_df.count()
 harm_cols  = harmonized_df.columns
 
-print(f"  Harmonized rows    : {harm_count:,}")
-print(f"  Harmonized columns : {len(harm_cols)}")
-print(f"  Columns: {harm_cols}")
+print(f"Harmonized rows: {harm_count:,}, columns: {len(harm_cols)}")
 
 # COMMAND ----------
 
 # MAGIC %md ## STEP 7 — Write to property_insurance_monthly
 
 # COMMAND ----------
-
-print(f"STEP 7 — Writing to {HARM_TABLE} (overwrite + overwriteSchema) ...")
 
 (
     harmonized_df
@@ -186,7 +163,7 @@ print(f"STEP 7 — Writing to {HARM_TABLE} (overwrite + overwriteSchema) ...")
 )
 
 final_count = spark.table(HARM_TABLE).count()
-print(f"  Rows written to harmonized table: {final_count:,}")
+print(f"Written {final_count:,} rows to {HARM_TABLE}")
 
 # COMMAND ----------
 
@@ -194,16 +171,7 @@ print(f"  Rows written to harmonized table: {final_count:,}")
 
 # COMMAND ----------
 
-print("STEP 8 — Sample harmonized rows:")
 display(spark.table(HARM_TABLE).limit(5))
-
-print("\nMapping summary:")
-print(f"{'Source Column (Spanish)':40s}  ->  {'Global Column (English)':35s}  Match Type")
-print("-" * 100)
-for local_col, global_col in sorted(mapped_cols):
-    match_row = next((r for r in dict_rows if r["local_column_name"] == local_col), None)
-    mt = match_row["match_type"] if match_row else "UNKNOWN"
-    print(f"  {local_col:40s}  ->  {global_col:35s}  {mt}")
 
 # COMMAND ----------
 
@@ -211,41 +179,9 @@ for local_col, global_col in sorted(mapped_cols):
 
 # COMMAND ----------
 
-_end = _dt.datetime.utcnow()
-
-log_schema = StructType([
-    StructField("run_id",        StringType(),    False),
-    StructField("workflow_name", StringType(),    True),
-    StructField("task_name",     StringType(),    True),
-    StructField("task_status",   StringType(),    True),
-    StructField("started_at",    TimestampType(), True),
-    StructField("finished_at",   TimestampType(), True),
-    StructField("row_count",     LongType(),      True),
-    StructField("message",       StringType(),    True),
-])
-
-log_df = spark.createDataFrame([(
-    RUN_ID,
-    "PT_ES_Column_Mapping_To_Global_Model",
-    "apply_approved_column_mappings",
-    "SUCCEEDED",
-    _start,
-    _end,
-    final_count,
+log_run_metric(
+    spark, OPS_TABLE, RUN_ID,
+    "apply_approved_column_mappings", "SUCCEEDED", _start, final_count,
     f"Applied {len(mapped_cols)} column mappings (version={mapping_version}) from {SOURCE_SYSTEM}. "
-    f"Wrote {final_count:,} rows to {HARM_TABLE}. "
-    f"Source country: {source_country}.",
-)], schema=log_schema)
-
-log_df.write.format("delta").mode("append").saveAsTable(OPS_TABLE)
-
-print(f"STEP 9 — Logged run record. RUN_ID={RUN_ID}")
-print()
-print("=" * 60)
-print("  08_apply_approved_column_mappings COMPLETE")
-print(f"  Rows written    : {final_count:,}")
-print(f"  Columns mapped  : {len(mapped_cols)}")
-print(f"  Mapping version : {mapping_version}")
-print(f"  Source country  : {source_country}")
-print(f"  Output table    : {HARM_TABLE}")
-print("=" * 60)
+    f"Wrote {final_count:,} rows to {HARM_TABLE}. Source country: {source_country}."
+)

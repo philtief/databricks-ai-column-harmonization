@@ -1,0 +1,258 @@
+# ==========================================================================
+# Column Harmonization Configuration
+# ==========================================================================
+# This file defines the domain, target data model, and AI settings for
+# the column harmonization workflow. Edit it to adapt the solution to
+# your own source data and target schema.
+#
+# After editing:  databricks bundle deploy && databricks bundle run Column_Mapping_To_Global_Model
+# ==========================================================================
+
+# --- Source context (fed to the LLM when proposing column mappings) --------
+source_context:
+  # Short domain label shown in logs and prompts
+  domain: "Spain property insurance monthly reporting"
+
+  # Identifier stored in control tables to distinguish this source
+  source_system: "ES_PROPERTY_RAW"
+
+  # Raw table name (created by notebook 01)
+  source_table: "property_insurance_monthly_raw"
+
+  # Full description passed to the LLM. Be specific: the more context the
+  # model has, the better the mapping quality. Mention the language of
+  # source columns, the business domain, and any naming conventions.
+  description: >
+    Monthly reporting data from Spain property insurance operations.
+    Source columns are in Spanish (e.g. prima_bruta = gross premium,
+    num_siniestros_declarados = claims reported). The target model uses
+    standardised English column names. Source system: ES_PROPERTY_RAW.
+
+
+# --- Target data model (the "ground truth" the LLM maps into) -------------
+# Each column entry is shown to the LLM as a valid mapping target.
+# The 'description' field is especially important: it helps the LLM
+# distinguish between similarly named columns. Write it for an LLM reader.
+target_model:
+  table_name: "property_insurance_monthly"
+
+  columns:
+    # -- Identity --
+    - name: record_id
+      type: BIGINT
+      description: "Unique identifier for each record"
+      examples: ["1", "2", "3"]
+      required: true
+      semantic_group: identity
+
+    # -- Time --
+    - name: reporting_year
+      type: INT
+      description: "Calendar year of the reporting period"
+      examples: ["2022", "2023", "2024", "2025"]
+      required: true
+      semantic_group: time
+
+    - name: reporting_month
+      type: INT
+      description: "Month number 1-12 of the reporting period"
+      examples: ["1", "6", "12"]
+      required: true
+      semantic_group: time
+
+    # -- Policy --
+    - name: policy_number
+      type: STRING
+      description: "Unique policy identifier"
+      examples: ["ES-1001-2022", "ES-5000-2024"]
+      required: true
+      semantic_group: policy
+
+    # -- Risk --
+    - name: risk_type
+      type: STRING
+      description: "Category of insured risk"
+      examples: ["Fire", "Flood", "Theft", "Water Damage"]
+      required: true
+      semantic_group: risk
+
+    # -- Geography --
+    - name: region
+      type: STRING
+      description: "Geographic region or province"
+      examples: ["Madrid", "Barcelona", "Valencia"]
+      required: true
+      semantic_group: geography
+
+    # -- Distribution --
+    - name: distribution_channel
+      type: STRING
+      description: "Channel through which policy was sold"
+      examples: ["Agent", "Broker", "Direct", "Bancassurance"]
+      required: true
+      semantic_group: distribution
+
+    # -- Premium --
+    - name: net_written_premium_eur
+      type: DOUBLE
+      description: "Net written premium in EUR after reinsurance"
+      examples: ["500.0", "1200.5", "3000.0"]
+      required: true
+      semantic_group: premium
+
+    - name: gross_written_premium_eur
+      type: DOUBLE
+      description: "Gross written premium in EUR before reinsurance"
+      examples: ["600.0", "1500.0", "4000.0"]
+      required: true
+      semantic_group: premium
+
+    # -- Policy counts --
+    - name: new_policies_count
+      type: INT
+      description: "Number of new policies in period"
+      examples: ["1", "5", "12"]
+      required: true
+      semantic_group: policy_count
+
+    - name: renewed_policies_count
+      type: INT
+      description: "Number of policies renewed in period"
+      examples: ["10", "25", "50"]
+      required: true
+      semantic_group: policy_count
+
+    - name: cancelled_policies_count
+      type: INT
+      description: "Number of policies cancelled in period"
+      examples: ["0", "1", "3"]
+      required: true
+      semantic_group: policy_count
+
+    # -- Claims --
+    - name: claims_reported_count
+      type: INT
+      description: "Total claims notified in period"
+      examples: ["0", "1", "5"]
+      required: true
+      semantic_group: claims
+
+    - name: claims_paid_count
+      type: INT
+      description: "Number of claims settled and paid"
+      examples: ["0", "1", "4"]
+      required: true
+      semantic_group: claims
+
+    - name: gross_claims_incurred_eur
+      type: DOUBLE
+      description: "Total gross claims incurred in EUR"
+      examples: ["200.0", "800.0", "2500.0"]
+      required: true
+      semantic_group: claims
+
+    - name: claims_reserve_eur
+      type: DOUBLE
+      description: "Claims reserve amount at reporting date in EUR"
+      examples: ["50.0", "200.0", "600.0"]
+      required: false
+      semantic_group: claims
+
+    # -- Expenses --
+    - name: management_expenses_eur
+      type: DOUBLE
+      description: "Internal management expenses in EUR"
+      examples: ["30.0", "100.0", "350.0"]
+      required: true
+      semantic_group: expenses
+
+    - name: commissions_eur
+      type: DOUBLE
+      description: "Commissions paid to distribution partners in EUR"
+      examples: ["50.0", "150.0", "400.0"]
+      required: true
+      semantic_group: expenses
+
+    # -- KPI --
+    - name: loss_ratio
+      type: DOUBLE
+      description: "Ratio of claims incurred to gross written premium"
+      examples: ["0.35", "0.65", "1.10"]
+      required: false
+      semantic_group: kpi
+
+    # -- Customer --
+    - name: customer_segment
+      type: STRING
+      description: "Segment classification of policyholder"
+      examples: ["Individual", "Small Business", "Large Enterprise"]
+      required: true
+      semantic_group: customer
+
+    # -- Risk zone --
+    - name: risk_zone
+      type: STRING
+      description: "Risk zone classification"
+      examples: ["Zone A", "Zone B", "Zone C"]
+      required: true
+      semantic_group: risk
+
+    # -- Coverage --
+    - name: primary_coverage
+      type: STRING
+      description: "Primary coverage type in the policy"
+      examples: ["Building", "Contents", "Both"]
+      required: true
+      semantic_group: coverage
+
+    # -- Monetary --
+    - name: currency
+      type: STRING
+      description: "ISO currency code for monetary amounts"
+      examples: ["EUR"]
+      required: true
+      semantic_group: monetary
+
+
+# --- Mandatory source columns -----------------------------------------------
+# These source columns must be reviewed and approved in the Databricks App
+# before the workflow can proceed past the review gate (notebook 06).
+mandatory_source_columns:
+  - id_registro
+  - anio
+  - mes
+  - codigo_poliza
+  - tipo_riesgo
+  - provincia
+  - canal_distribucion
+  - prima_neta
+  - prima_bruta
+  - num_siniestros_declarados
+  - num_siniestros_pagados
+  - segmento_cliente
+  - cobertura_principal
+  - moneda
+
+
+# --- Semantic fields (eligible for optional value mapping) -----------------
+# After column mapping is applied, these fields may still contain values
+# in the source language (e.g. "Incendio" instead of "Fire"). Notebook 09
+# can translate them if approved entries exist in value_mapping_dictionary_es.
+semantic_fields:
+  - risk_type
+  - distribution_channel
+  - customer_segment
+  - risk_zone
+  - primary_coverage
+
+
+# --- AI endpoint configuration ---------------------------------------------
+ai:
+  # Foundation model endpoint used by ai_query() in notebook 04.
+  # Can be overridden by the DAB job parameter 'ai_endpoint'.
+  endpoint: "databricks-gpt-5-2"
+
+  # Rough per-column token estimates for cost monitoring (notebook 04).
+  estimated_prompt_tokens_per_column: 200
+  estimated_response_tokens_per_column: 80
+  estimated_eur_per_1k_tokens: 0.002

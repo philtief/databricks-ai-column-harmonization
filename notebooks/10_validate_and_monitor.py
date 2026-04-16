@@ -19,6 +19,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./_shared_utils
+
+# COMMAND ----------
+
 # MAGIC %md ## Parameters
 
 # COMMAND ----------
@@ -40,16 +44,15 @@ USAGE_TABLE  = f"{DB}.`ai_mapping_usage_metrics`"
 OPS_TABLE    = f"{DB}.`workflow_run_metrics`"
 SOURCE_SYSTEM = "ES_PROPERTY_RAW"
 
-MANDATORY_COLUMNS = [
+_cfg = load_harmonization_config()
+MANDATORY_COLUMNS = _cfg["mandatory_source_columns"] if _cfg else [
     "id_registro", "anio", "mes", "codigo_poliza", "tipo_riesgo",
     "provincia", "canal_distribucion", "prima_neta", "prima_bruta",
     "num_siniestros_declarados", "num_siniestros_pagados",
     "segmento_cliente", "cobertura_principal", "moneda",
 ]
 
-print("STEP 1 — Parameters loaded")
-print(f"  catalog_name : {catalog_name}")
-print(f"  schema_name  : {schema_name}")
+print(f"Config: {DB}")
 
 # COMMAND ----------
 
@@ -68,15 +71,11 @@ from pyspark.sql.types import (
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
 
-print(f"STEP 2 — Imports done. RUN_ID = {RUN_ID}")
-
 # COMMAND ----------
 
 # MAGIC %md ## STEP 3 — Load Tables
 
 # COMMAND ----------
-
-print("STEP 3 — Loading tables ...")
 
 raw_df  = spark.table(RAW_TABLE)
 harm_df = spark.table(HARM_TABLE)
@@ -84,16 +83,13 @@ harm_df = spark.table(HARM_TABLE)
 raw_count  = raw_df.count()
 harm_count = harm_df.count()
 
-print(f"  Raw table rows        : {raw_count:,}")
-print(f"  Harmonized table rows : {harm_count:,}")
+print(f"Raw rows: {raw_count:,}, harmonized rows: {harm_count:,}")
 
 # COMMAND ----------
 
 # MAGIC %md ## STEP 4 — Data Quality Checks
 
 # COMMAND ----------
-
-print("STEP 4 — Running data quality checks ...")
 
 _now = _dt.datetime.utcnow()
 dq_results = []
@@ -200,8 +196,6 @@ print(f"\n  Total checks: {len(dq_results)}")
 
 # COMMAND ----------
 
-print(f"STEP 5 — Writing DQ results to {DQ_TABLE} ...")
-
 dq_schema = StructType([
     StructField("run_id",       StringType(),    False),
     StructField("check_name",   StringType(),    True),
@@ -214,7 +208,7 @@ dq_schema = StructType([
 dq_df = spark.createDataFrame(dq_results, schema=dq_schema)
 dq_df.write.format("delta").mode("append").saveAsTable(DQ_TABLE)
 
-print(f"  Written {len(dq_results)} DQ check results.")
+print(f"Written {len(dq_results)} DQ check results to {DQ_TABLE}")
 
 # COMMAND ----------
 
@@ -222,10 +216,7 @@ print(f"  Written {len(dq_results)} DQ check results.")
 
 # COMMAND ----------
 
-print("STEP 6 — Monitoring Summary")
-
 # Workflow run metrics (latest per task)
-print("\n  Recent workflow runs (latest per task):")
 display(spark.sql(f"""
 SELECT
   task_name,
@@ -241,7 +232,6 @@ LIMIT 20
 """))
 
 # AI usage metrics
-print("\n  AI mapping usage (latest run):")
 display(spark.sql(f"""
 SELECT
   mapping_type,
@@ -260,7 +250,6 @@ LIMIT 10
 """))
 
 # Column mapping candidates by review_status
-print("\n  Column mapping candidates by status:")
 display(spark.sql(f"""
 SELECT
   review_status,
@@ -273,7 +262,6 @@ ORDER BY mandatory_flag DESC, review_status
 """))
 
 # Column mapping dictionary coverage
-print("\n  Column mapping dictionary coverage:")
 display(spark.sql(f"""
 SELECT
   d.local_column_name,
@@ -287,7 +275,6 @@ ORDER BY d.local_column_name
 """))
 
 # Harmonized output stats
-print("\n  Harmonized output statistics:")
 display(spark.sql(f"""
 SELECT
   COUNT(*)                                    AS row_count,
@@ -308,8 +295,6 @@ FROM {HARM_TABLE}
 # MAGIC %md ## STEP 7 — Create Monitoring View
 
 # COMMAND ----------
-
-print("STEP 7 — Creating vw_latest_column_mapping_summary ...")
 
 spark.sql(f"""
 CREATE OR REPLACE VIEW {DB}.`vw_latest_column_mapping_summary` AS
@@ -336,12 +321,12 @@ WHERE c.source_system = '{SOURCE_SYSTEM}'
 ORDER BY c.mandatory_flag DESC, c.local_column_name
 """)
 
-print("  View vw_latest_column_mapping_summary created.")
+print("View vw_latest_column_mapping_summary created.")
 display(spark.sql(f"SELECT * FROM {DB}.`vw_latest_column_mapping_summary`"))
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 8 — Compact DQ Summary Box
+# MAGIC %md ## STEP 8 — Log to workflow_run_metrics
 
 # COMMAND ----------
 
@@ -350,59 +335,17 @@ warned  = sum(1 for r in dq_results if r[2] == "WARNING")
 failed  = sum(1 for r in dq_results if r[2] == "FAILED")
 total   = len(dq_results)
 
-print()
-print("=" * 60)
-print("  DATA QUALITY SUMMARY")
-print("=" * 60)
-print(f"  Total checks : {total}")
-print(f"  PASSED       : {passed}")
-print(f"  WARNING      : {warned}")
-print(f"  FAILED       : {failed}")
-print()
-for r in dq_results:
-    icon = "OK  " if r[2] == "PASSED" else ("WARN" if r[2] == "WARNING" else "FAIL")
-    print(f"  [{icon}] {r[1]:<45s} {r[3]}")
-print("=" * 60)
-
-# COMMAND ----------
-
-# MAGIC %md ## STEP 9 — Log to workflow_run_metrics
-
-# COMMAND ----------
-
-_end = _dt.datetime.utcnow()
-
-log_schema = StructType([
-    StructField("run_id",        StringType(),    False),
-    StructField("workflow_name", StringType(),    True),
-    StructField("task_name",     StringType(),    True),
-    StructField("task_status",   StringType(),    True),
-    StructField("started_at",    TimestampType(), True),
-    StructField("finished_at",   TimestampType(), True),
-    StructField("row_count",     LongType(),      True),
-    StructField("message",       StringType(),    True),
-])
-
 overall_status = "SUCCEEDED" if failed == 0 else "FAILED"
 
-log_df = spark.createDataFrame([(
-    RUN_ID,
-    "PT_ES_Column_Mapping_To_Global_Model",
-    "validate_and_monitor",
-    overall_status,
-    _start,
-    _end,
-    harm_count,
-    f"DQ: {passed} PASSED, {warned} WARNING, {failed} FAILED out of {total} checks. Harmonized rows: {harm_count:,}.",
-)], schema=log_schema)
-
-log_df.write.format("delta").mode("append").saveAsTable(OPS_TABLE)
-
-print(f"STEP 9 — Logged run record '{overall_status}'. RUN_ID={RUN_ID}")
+log_run_metric(
+    spark, OPS_TABLE, RUN_ID,
+    "validate_and_monitor", overall_status, _start, harm_count,
+    f"DQ: {passed} PASSED, {warned} WARNING, {failed} FAILED out of {total} checks. Harmonized rows: {harm_count:,}."
+)
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 10 — Raise Exception on Critical Failures
+# MAGIC %md ## STEP 9 — Raise Exception on Critical Failures
 
 # COMMAND ----------
 
@@ -413,9 +356,4 @@ if failed > 0:
         f"Review data_quality_results table (run_id={RUN_ID}) for details."
     )
 
-print()
-print("=" * 60)
-print("  10_validate_and_monitor COMPLETE")
-print(f"  DQ: {passed} PASSED, {warned} WARNING, {failed} FAILED")
-print(f"  Harmonized rows: {harm_count:,}")
-print("=" * 60)
+print(f"DQ: {passed} PASSED, {warned} WARNING, {failed} FAILED. Harmonized rows: {harm_count:,}")

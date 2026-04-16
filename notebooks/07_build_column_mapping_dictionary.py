@@ -12,6 +12,10 @@
 
 # COMMAND ----------
 
+# MAGIC %run ./_shared_utils
+
+# COMMAND ----------
+
 # MAGIC %md ## Parameters
 
 # COMMAND ----------
@@ -32,38 +36,27 @@ OPS_TABLE     = f"{DB}.`workflow_run_metrics`"
 SOURCE_SYSTEM = "ES_PROPERTY_RAW"
 SOURCE_TABLE  = "property_insurance_monthly_raw"
 
-print("STEP 1 — Parameters loaded")
-print(f"  catalog_name    : {catalog_name}")
-print(f"  schema_name     : {schema_name}")
-print(f"  mapping_version : {mapping_version}")
-print(f"  dict_table      : {DICT_TABLE}")
+print(f"Config: {DB}, version={mapping_version}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 2 — Imports
+# MAGIC %md ## Imports
 
 # COMMAND ----------
 
 import datetime as _dt
 from uuid import uuid4
 from pyspark.sql import functions as F
-from pyspark.sql.types import (
-    StructType, StructField,
-    StringType, LongType, BooleanType, TimestampType
-)
+from pyspark.sql.types import TimestampType
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
 
-print(f"STEP 2 — Imports done. RUN_ID = {RUN_ID}")
-
 # COMMAND ----------
 
-# MAGIC %md ## STEP 3 — Load Approved and Corrected Candidates
+# MAGIC %md ## Load Approved and Corrected Candidates
 
 # COMMAND ----------
-
-print("STEP 3 — Loading APPROVED and CORRECTED candidates ...")
 
 approved_df = spark.sql(f"""
 SELECT
@@ -71,9 +64,6 @@ SELECT
   source_table,
   local_column_name,
   local_data_type,
-  -- Resolve global column name:
-  -- APPROVED: use final if set, else proposed
-  -- CORRECTED: must use final
   CASE
     WHEN review_status = 'CORRECTED' THEN final_global_column_name
     WHEN review_status = 'APPROVED'  THEN COALESCE(final_global_column_name, proposed_global_column_name)
@@ -94,15 +84,13 @@ WHERE source_system = '{SOURCE_SYSTEM}'
 """)
 
 approved_count = approved_df.count()
-print(f"  Found {approved_count} APPROVED/CORRECTED candidates.")
+print(f"Found {approved_count} APPROVED/CORRECTED candidates")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 4 — Exclude NO_MATCH and Null Resolutions
+# MAGIC %md ## Exclude NO_MATCH and Null Resolutions
 
 # COMMAND ----------
-
-print("STEP 4 — Filtering out NO_MATCH and null global column names ...")
 
 valid_mappings_df = approved_df.where(
     F.col("global_column_name").isNotNull() &
@@ -110,30 +98,16 @@ valid_mappings_df = approved_df.where(
     (F.col("global_column_name") != "")
 )
 
-excluded_df = approved_df.where(
-    F.col("global_column_name").isNull() |
-    (F.upper(F.col("global_column_name")) == "NO_MATCH") |
-    (F.col("global_column_name") == "")
-)
+excluded_count = approved_count - valid_mappings_df.count()
+valid_count = valid_mappings_df.count()
 
-valid_count    = valid_mappings_df.count()
-excluded_count = excluded_df.count()
-
-print(f"  Valid mappings (will enter dictionary) : {valid_count}")
-print(f"  Excluded (NO_MATCH or null)            : {excluded_count}")
-
-if excluded_count > 0:
-    print("\n  Excluded columns:")
-    for row in excluded_df.select("local_column_name", "global_column_name", "review_status").collect():
-        print(f"    - {row['local_column_name']} -> '{row['global_column_name']}' ({row['review_status']})")
+print(f"Valid mappings: {valid_count}, Excluded (NO_MATCH/null): {excluded_count}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 5 — Print REJECTED columns
+# MAGIC %md ## Print REJECTED columns
 
 # COMMAND ----------
-
-print("STEP 5 — REJECTED columns (not entering dictionary):")
 
 rejected_df = spark.sql(f"""
 SELECT
@@ -152,17 +126,15 @@ ORDER BY local_column_name
 rejected_count = rejected_df.count()
 if rejected_count > 0:
     display(rejected_df)
-    print(f"  {rejected_count} column(s) rejected — these will NOT appear in the harmonized output.")
+    print(f"{rejected_count} column(s) rejected")
 else:
-    print("  No rejected columns.")
+    print("No rejected columns.")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 6 — Prepare Dictionary Rows
+# MAGIC %md ## Prepare Dictionary Rows
 
 # COMMAND ----------
-
-print("STEP 6 — Preparing dictionary rows ...")
 
 _now = _dt.datetime.utcnow()
 
@@ -184,15 +156,13 @@ dict_staged_df = (
 )
 
 dict_staged_df.createOrReplaceTempView("_dict_staged")
-print(f"  Dictionary rows ready: {dict_staged_df.count()}")
+print(f"Dictionary rows ready: {dict_staged_df.count()}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 7 — MERGE into column_mapping_dictionary_es
+# MAGIC %md ## MERGE into column_mapping_dictionary_es
 
 # COMMAND ----------
-
-print(f"STEP 7 — Merging into {DICT_TABLE} ...")
 
 spark.sql(f"""
 MERGE INTO {DICT_TABLE} AS tgt
@@ -219,13 +189,10 @@ WHEN NOT MATCHED THEN INSERT (
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 8 — Deactivate Stale Dictionary Entries
+# MAGIC %md ## Deactivate Stale Dictionary Entries
 
 # COMMAND ----------
 
-print("STEP 8 — Deactivating dictionary entries no longer in the approved set ...")
-
-# Build list of currently valid local column names
 valid_local_cols = [row["local_column_name"] for row in dict_staged_df.select("local_column_name").collect()]
 valid_cols_str = ", ".join(f"'{c}'" for c in valid_local_cols)
 
@@ -238,17 +205,15 @@ if valid_local_cols:
       AND local_column_name NOT IN ({valid_cols_str})
     """
     spark.sql(deactivate_sql)
-    print("  Stale entries deactivated (if any).")
+    print("Stale entries deactivated (if any).")
 else:
-    print("  No valid local columns — nothing to deactivate.")
+    print("No valid local columns -- nothing to deactivate.")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 9 — Verify Dictionary
+# MAGIC %md ## Verify Dictionary
 
 # COMMAND ----------
-
-print("STEP 9 — Active dictionary entries after build:")
 
 dict_final_df = spark.sql(f"""
 SELECT
@@ -269,44 +234,13 @@ ORDER BY local_column_name
 active_count = dict_final_df.count()
 display(dict_final_df)
 
-print(f"\n  Active dictionary entries: {active_count}")
+print(f"Active dictionary entries: {active_count}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 10 — Log to workflow_run_metrics
+# MAGIC %md ## Log to workflow_run_metrics
 
 # COMMAND ----------
 
-_end = _dt.datetime.utcnow()
-
-log_schema = StructType([
-    StructField("run_id",        StringType(),    False),
-    StructField("workflow_name", StringType(),    True),
-    StructField("task_name",     StringType(),    True),
-    StructField("task_status",   StringType(),    True),
-    StructField("started_at",    TimestampType(), True),
-    StructField("finished_at",   TimestampType(), True),
-    StructField("row_count",     LongType(),      True),
-    StructField("message",       StringType(),    True),
-])
-
-log_df = spark.createDataFrame([(
-    RUN_ID,
-    "PT_ES_Column_Mapping_To_Global_Model",
-    "build_column_mapping_dictionary",
-    "SUCCEEDED",
-    _start,
-    _end,
-    active_count,
-    f"Dictionary built with {active_count} active entries. Approved: {approved_count}, Excluded (NO_MATCH): {excluded_count}, Rejected: {rejected_count}. Version: {mapping_version}.",
-)], schema=log_schema)
-
-log_df.write.format("delta").mode("append").saveAsTable(OPS_TABLE)
-
-print(f"STEP 10 — Logged run record. RUN_ID={RUN_ID}")
-print()
-print("=" * 60)
-print("  07_build_column_mapping_dictionary COMPLETE")
-print(f"  Active dictionary entries : {active_count}")
-print(f"  Mapping version           : {mapping_version}")
-print("=" * 60)
+log_run_metric(spark, OPS_TABLE, RUN_ID, "build_column_mapping_dictionary", "SUCCEEDED", _start, active_count,
+               f"Dictionary built with {active_count} active entries. Approved: {approved_count}, Excluded (NO_MATCH): {excluded_count}, Rejected: {rejected_count}. Version: {mapping_version}.")

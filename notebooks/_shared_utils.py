@@ -65,4 +65,39 @@ def load_harmonization_config():
 
 # COMMAND ----------
 
+# MAGIC %md ## Table Reference Builder
+
+# COMMAND ----------
+
+def get_table_refs(config, db_prefix):
+    """Build fully-qualified table references from config.
+
+    Returns a dict with keys for every table/view used by the workflow.
+    Table names are generic (no country suffix). Country isolation is
+    handled at the schema level via the db_prefix.
+    """
+    src_table = config["source_context"]["source_table"] if config else "property_insurance_monthly_raw"
+    tgt_table = config["target_model"]["table_name"] if config else "property_insurance_monthly"
+    src_system = config["source_context"]["source_system"] if config else "ES_PROPERTY_RAW"
+
+    return {
+        "raw_table": f"{db_prefix}.`{src_table}`",
+        "harm_table": f"{db_prefix}.`{tgt_table}`",
+        "source_system": src_system,
+        "source_table_name": src_table,
+        "target_table_name": tgt_table,
+        "inv_table": f"{db_prefix}.`source_column_inventory`",
+        "cand_table": f"{db_prefix}.`column_mapping_candidates`",
+        "dict_table": f"{db_prefix}.`column_mapping_dictionary`",
+        "audit_table": f"{db_prefix}.`column_mapping_audit`",
+        "vcand_table": f"{db_prefix}.`value_mapping_candidates`",
+        "vdict_table": f"{db_prefix}.`value_mapping_dictionary`",
+        "gtc_table": f"{db_prefix}.`global_target_columns`",
+        "ops_table": f"{db_prefix}.`workflow_run_metrics`",
+        "usage_table": f"{db_prefix}.`ai_mapping_usage_metrics`",
+        "dq_table": f"{db_prefix}.`data_quality_results`",
+    }
+
+# COMMAND ----------
+
 print("_shared_utils loaded.")

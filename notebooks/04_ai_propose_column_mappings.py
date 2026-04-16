@@ -2,9 +2,9 @@
 # MAGIC %md
 # MAGIC # 04 — AI Propose Column Mappings
 # MAGIC
-# MAGIC Uses `ai_query` to propose a global English target column for each Spanish source column
+# MAGIC Uses `ai_query` to propose a global target column for each source column
 # MAGIC that does not yet have an approved mapping. Results are written to
-# MAGIC `column_mapping_candidates_es` with `review_status = 'PENDING'`.
+# MAGIC `column_mapping_candidates` with `review_status = 'PENDING'`.
 # MAGIC
 # MAGIC **AI endpoint:** `{ai_endpoint}` (default: databricks-gpt-5-2)
 # MAGIC
@@ -32,17 +32,16 @@ ai_endpoint     = dbutils.widgets.get("ai_endpoint").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
 DB             = f"`{catalog_name}`.`{schema_name}`"
-INV_TABLE      = f"{DB}.`source_column_inventory_es`"
-GTC_TABLE      = f"{DB}.`global_target_columns`"
-DICT_TABLE     = f"{DB}.`column_mapping_dictionary_es`"
-CAND_TABLE     = f"{DB}.`column_mapping_candidates_es`"
-USAGE_TABLE    = f"{DB}.`ai_mapping_usage_metrics`"
-OPS_TABLE      = f"{DB}.`workflow_run_metrics`"
+_cfg           = load_harmonization_config()
+_refs          = get_table_refs(_cfg, DB)
+INV_TABLE      = _refs["inv_table"]
+GTC_TABLE      = _refs["gtc_table"]
+DICT_TABLE     = _refs["dict_table"]
+CAND_TABLE     = _refs["cand_table"]
+USAGE_TABLE    = _refs["usage_table"]
+OPS_TABLE      = _refs["ops_table"]
 
-# Load config for mandatory columns and AI context
-_cfg = load_harmonization_config()
-
-SOURCE_SYSTEM = _cfg["source_context"]["source_system"] if _cfg else "ES_PROPERTY_RAW"
+SOURCE_SYSTEM = _refs["source_system"]
 
 MANDATORY_COLUMNS = set(
     _cfg["mandatory_source_columns"] if _cfg else [
@@ -228,7 +227,7 @@ enriched_df.createOrReplaceTempView("_candidates_staged")
 
 # COMMAND ----------
 
-# MAGIC %md ## MERGE into column_mapping_candidates_es
+# MAGIC %md ## MERGE into column_mapping_candidates
 
 # COMMAND ----------
 

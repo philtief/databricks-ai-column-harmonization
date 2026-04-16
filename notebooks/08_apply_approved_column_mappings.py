@@ -5,11 +5,11 @@
 # MAGIC **CORE TRANSFORMATION NOTEBOOK**
 # MAGIC
 # MAGIC Reads the approved column mapping dictionary and uses it to dynamically rename
-# MAGIC Spanish source columns to global English column names. Then adds pipeline metadata
-# MAGIC columns and writes the result to `property_insurance_monthly`.
+# MAGIC source columns to global column names. Then adds pipeline metadata columns and
+# MAGIC writes the result to the harmonized target table.
 # MAGIC
 # MAGIC **No column renames are hardcoded in this notebook.**
-# MAGIC All renames are driven entirely by `column_mapping_dictionary_es`.
+# MAGIC All renames are driven entirely by `column_mapping_dictionary`.
 
 # COMMAND ----------
 
@@ -33,11 +33,13 @@ source_country  = dbutils.widgets.get("source_country").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
 DB             = f"`{catalog_name}`.`{schema_name}`"
-RAW_TABLE      = f"{DB}.`property_insurance_monthly_raw`"
-DICT_TABLE     = f"{DB}.`column_mapping_dictionary_es`"
-HARM_TABLE     = f"{DB}.`property_insurance_monthly`"
-OPS_TABLE      = f"{DB}.`workflow_run_metrics`"
-SOURCE_SYSTEM  = "ES_PROPERTY_RAW"
+_cfg           = load_harmonization_config()
+_refs          = get_table_refs(_cfg, DB)
+RAW_TABLE      = _refs["raw_table"]
+DICT_TABLE     = _refs["dict_table"]
+HARM_TABLE     = _refs["harm_table"]
+OPS_TABLE      = _refs["ops_table"]
+SOURCE_SYSTEM  = _refs["source_system"]
 
 print(f"Config: {DB}")
 
@@ -149,7 +151,7 @@ print(f"Harmonized rows: {harm_count:,}, columns: {len(harm_cols)}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 7 — Write to property_insurance_monthly
+# MAGIC %md ## STEP 7 — Write to Harmonized Table
 
 # COMMAND ----------
 

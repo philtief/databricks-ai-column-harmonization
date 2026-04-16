@@ -4,9 +4,9 @@
 # MAGIC
 # MAGIC **SECONDARY OPTIONAL STEP — Value Translation**
 # MAGIC
-# MAGIC This notebook applies categorical value translations (Spanish values → English values)
-# MAGIC to the already-harmonized `property_insurance_monthly` table, **if and only if** approved
-# MAGIC entries exist in `value_mapping_dictionary_es`.
+# MAGIC This notebook applies categorical value translations (source values to harmonized values)
+# MAGIC to the already-harmonized target table, **if and only if** approved entries exist in
+# MAGIC `value_mapping_dictionary`.
 # MAGIC
 # MAGIC If the dictionary is empty, the notebook exits gracefully without modifying the
 # MAGIC harmonized table. The harmonized table is fully usable with column mapping alone.
@@ -36,13 +36,12 @@ ai_endpoint     = dbutils.widgets.get("ai_endpoint").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
 DB           = f"`{catalog_name}`.`{schema_name}`"
-HARM_TABLE   = f"{DB}.`property_insurance_monthly`"
-VDICT_TABLE  = f"{DB}.`value_mapping_dictionary_es`"
-VCAND_TABLE  = f"{DB}.`value_mapping_candidates_es`"
-OPS_TABLE    = f"{DB}.`workflow_run_metrics`"
-
-# Semantic fields eligible for value translation
-_cfg = load_harmonization_config()
+_cfg         = load_harmonization_config()
+_refs        = get_table_refs(_cfg, DB)
+HARM_TABLE   = _refs["harm_table"]
+VDICT_TABLE  = _refs["vdict_table"]
+VCAND_TABLE  = _refs["vcand_table"]
+OPS_TABLE    = _refs["ops_table"]
 SEMANTIC_FIELDS = _cfg["semantic_fields"] if _cfg else [
     "risk_type",
     "distribution_channel",
@@ -92,7 +91,7 @@ if active_vdict_count == 0:
     log_run_metric(
         spark, OPS_TABLE, RUN_ID,
         "optional_value_mapping", "INFO", _start, 0,
-        "Skipped: no active entries in value_mapping_dictionary_es. Values remain as sourced. Column mapping is complete."
+        "Skipped: no active entries in value_mapping_dictionary. Values remain as sourced. Column mapping is complete."
     )
 
     dbutils.notebook.exit("Skipped: no active value mappings.")

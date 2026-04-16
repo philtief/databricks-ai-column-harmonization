@@ -90,3 +90,15 @@ def get_source_system(config: dict) -> str:
     """Return the source system identifier."""
     result: str = config["source_context"]["source_system"]
     return result
+
+
+def get_source_table(config: dict) -> str:
+    """Return the raw source table name from config."""
+    result: str = config["source_context"]["source_table"]
+    return result
+
+
+def get_target_table(config: dict) -> str:
+    """Return the harmonized target table name from config."""
+    result: str = config["target_model"]["table_name"]
+    return result

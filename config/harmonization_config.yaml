@@ -237,7 +237,7 @@ mandatory_source_columns:
 # --- Semantic fields (eligible for optional value mapping) -----------------
 # After column mapping is applied, these fields may still contain values
 # in the source language (e.g. "Incendio" instead of "Fire"). Notebook 09
-# can translate them if approved entries exist in value_mapping_dictionary_es.
+# can translate them if approved entries exist in value_mapping_dictionary.
 semantic_fields:
   - risk_type
   - distribution_channel

@@ -8,8 +8,10 @@ from harmonization.config import (
     get_mandatory_columns,
     get_semantic_fields,
     get_source_system,
+    get_source_table,
     get_target_column_names,
     get_target_columns,
+    get_target_table,
     load_config,
 )
 
@@ -120,3 +122,13 @@ class TestGetAiContext:
 class TestGetSourceSystem:
     def test_returns_source_system(self, config):
         assert get_source_system(config) == "ES_PROPERTY_RAW"
+
+
+class TestGetSourceTable:
+    def test_returns_source_table(self, config):
+        assert get_source_table(config) == "property_insurance_monthly_raw"
+
+
+class TestGetTargetTable:
+    def test_returns_target_table(self, config):
+        assert get_target_table(config) == "property_insurance_monthly"

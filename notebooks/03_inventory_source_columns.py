@@ -2,8 +2,8 @@
 # MAGIC %md
 # MAGIC # 03 — Inventory Source Columns
 # MAGIC
-# MAGIC Reads the raw Spain source table schema, collects up to 5 non-null distinct sample
-# MAGIC values per column, and merges the result into `source_column_inventory_es`.
+# MAGIC Reads the raw source table schema, collects up to 5 non-null distinct sample
+# MAGIC values per column, and merges the result into `source_column_inventory`.
 # MAGIC
 # MAGIC This inventory is the input to the AI column-mapping notebook (04).
 
@@ -25,11 +25,13 @@ catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name  = dbutils.widgets.get("schema_name").strip()
 
 DB            = f"`{catalog_name}`.`{schema_name}`"
-RAW_TABLE     = f"{DB}.`property_insurance_monthly_raw`"
-INV_TABLE     = f"{DB}.`source_column_inventory_es`"
-OPS_TABLE     = f"{DB}.`workflow_run_metrics`"
-SOURCE_SYSTEM = "ES_PROPERTY_RAW"
-SOURCE_TABLE  = "property_insurance_monthly_raw"
+_cfg          = load_harmonization_config()
+_refs         = get_table_refs(_cfg, DB)
+RAW_TABLE     = _refs["raw_table"]
+INV_TABLE     = _refs["inv_table"]
+OPS_TABLE     = _refs["ops_table"]
+SOURCE_SYSTEM = _refs["source_system"]
+SOURCE_TABLE  = _refs["source_table_name"]
 
 print(f"Config: {DB}")
 
@@ -123,7 +125,7 @@ print(f"DataFrame rows: {inv_df.count()}")
 
 # COMMAND ----------
 
-# MAGIC %md ## MERGE into source_column_inventory_es
+# MAGIC %md ## MERGE into source_column_inventory
 
 # COMMAND ----------
 

@@ -75,7 +75,7 @@ SELECT
   review_status,
   mandatory_flag,
   created_at
-FROM {DB}.`column_mapping_candidates_es`
+FROM {DB}.`column_mapping_candidates`
 WHERE review_status = 'PENDING'
 ORDER BY mandatory_flag DESC, confidence DESC, local_column_name
 """)
@@ -88,7 +88,7 @@ SELECT
   confidence,
   COUNT(*) AS count,
   SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
-FROM {DB}.`column_mapping_candidates_es`
+FROM {DB}.`column_mapping_candidates`
 GROUP BY review_status, mandatory_flag, confidence
 """)
 
@@ -103,15 +103,15 @@ WITH mandatory AS (
          reviewed_at,
          app_decision_source,
          CASE WHEN review_status IN ('APPROVED','CORRECTED') THEN TRUE ELSE FALSE END AS is_ready
-  FROM {DB}.`column_mapping_candidates_es`
+  FROM {DB}.`column_mapping_candidates`
   WHERE mandatory_flag = TRUE
 )
 SELECT * FROM mandatory
 ORDER BY is_ready ASC, mandatory_column_name
 """)
 
-execute_ddl("vw_column_mapping_low_conf_es", f"""
-CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_low_conf_es` AS
+execute_ddl("vw_column_mapping_low_conf", f"""
+CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_low_conf` AS
 SELECT
   candidate_id,
   source_system,
@@ -124,13 +124,13 @@ SELECT
   review_status,
   mandatory_flag,
   mapping_rationale
-FROM {DB}.`column_mapping_candidates_es`
+FROM {DB}.`column_mapping_candidates`
 WHERE UPPER(confidence) = 'LOW' OR ai_error_status IS NOT NULL
 ORDER BY mandatory_flag DESC, local_column_name
 """)
 
-execute_ddl("vw_column_mapping_coverage_es", f"""
-CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_coverage_es` AS
+execute_ddl("vw_column_mapping_coverage", f"""
+CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_coverage` AS
 SELECT
   g.global_column_name,
   g.global_data_type,
@@ -149,7 +149,7 @@ SELECT
     ELSE 'UNKNOWN'
   END AS coverage_status
 FROM {DB}.`global_target_columns` g
-LEFT JOIN {DB}.`column_mapping_candidates_es` c
+LEFT JOIN {DB}.`column_mapping_candidates` c
   ON g.global_column_name = COALESCE(c.final_global_column_name, c.proposed_global_column_name)
 ORDER BY g.semantic_group, g.global_column_name
 """)
@@ -169,7 +169,7 @@ SELECT
   confidence,
   COUNT(*) AS count,
   SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
-FROM {DB}.`column_mapping_candidates_es`
+FROM {DB}.`column_mapping_candidates`
 GROUP BY review_status, mandatory_flag, confidence
 ORDER BY mandatory_flag DESC, review_status, confidence
 """)
@@ -195,16 +195,16 @@ SELECT
   app_decision_source,
   reviewed_by,
   reviewed_at
-FROM {DB}.`column_mapping_candidates_es`
+FROM {DB}.`column_mapping_candidates`
 ORDER BY mandatory_flag DESC, review_status, local_column_name
 """)
 
 display(all_candidates_df)
 
 total_count   = all_candidates_df.count()
-pending_count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates_es` WHERE review_status = 'PENDING'").collect()[0]["cnt"]
-approved_count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates_es` WHERE review_status IN ('APPROVED','CORRECTED')").collect()[0]["cnt"]
-mandatory_pending = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates_es` WHERE mandatory_flag = TRUE AND review_status = 'PENDING'").collect()[0]["cnt"]
+pending_count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE review_status = 'PENDING'").collect()[0]["cnt"]
+approved_count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE review_status IN ('APPROVED','CORRECTED')").collect()[0]["cnt"]
+mandatory_pending = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE mandatory_flag = TRUE AND review_status = 'PENDING'").collect()[0]["cnt"]
 
 print(f"Total: {total_count}, Pending: {pending_count}, Approved/Corrected: {approved_count}, Mandatory pending: {mandatory_pending}")
 

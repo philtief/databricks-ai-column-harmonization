@@ -2,8 +2,8 @@
 # MAGIC %md
 # MAGIC # 07 — Build Column Mapping Dictionary
 # MAGIC
-# MAGIC Promotes all APPROVED and CORRECTED candidates from `column_mapping_candidates_es`
-# MAGIC into the production `column_mapping_dictionary_es`.
+# MAGIC Promotes all APPROVED and CORRECTED candidates from `column_mapping_candidates`
+# MAGIC into the production `column_mapping_dictionary`.
 # MAGIC
 # MAGIC - APPROVED rows use `final_global_column_name` if set, otherwise `proposed_global_column_name`.
 # MAGIC - CORRECTED rows use `final_global_column_name` (required for CORRECTED status).
@@ -30,11 +30,13 @@ schema_name     = dbutils.widgets.get("schema_name").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
 DB            = f"`{catalog_name}`.`{schema_name}`"
-CAND_TABLE    = f"{DB}.`column_mapping_candidates_es`"
-DICT_TABLE    = f"{DB}.`column_mapping_dictionary_es`"
-OPS_TABLE     = f"{DB}.`workflow_run_metrics`"
-SOURCE_SYSTEM = "ES_PROPERTY_RAW"
-SOURCE_TABLE  = "property_insurance_monthly_raw"
+_cfg          = load_harmonization_config()
+_refs         = get_table_refs(_cfg, DB)
+CAND_TABLE    = _refs["cand_table"]
+DICT_TABLE    = _refs["dict_table"]
+OPS_TABLE     = _refs["ops_table"]
+SOURCE_SYSTEM = _refs["source_system"]
+SOURCE_TABLE  = _refs["source_table_name"]
 
 print(f"Config: {DB}, version={mapping_version}")
 
@@ -160,7 +162,7 @@ print(f"Dictionary rows ready: {dict_staged_df.count()}")
 
 # COMMAND ----------
 
-# MAGIC %md ## MERGE into column_mapping_dictionary_es
+# MAGIC %md ## MERGE into column_mapping_dictionary
 
 # COMMAND ----------
 

@@ -2,6 +2,12 @@
 # MAGIC %md
 # MAGIC # 01 — Generate Spain Raw Data
 # MAGIC
+# MAGIC > **DEMO DATA GENERATOR** — This notebook generates synthetic Spain property
+# MAGIC > insurance data for the shipped example. When adapting to your own domain,
+# MAGIC > replace this notebook with your own data ingestion step. All downstream
+# MAGIC > notebooks (02-10) are domain-agnostic and driven by
+# MAGIC > `config/harmonization_config.yaml`.
+# MAGIC
 # MAGIC Generates synthetic Spain property insurance monthly reporting data
 # MAGIC and writes to `{catalog_name}.{schema_name}.property_insurance_monthly_raw`.
 # MAGIC

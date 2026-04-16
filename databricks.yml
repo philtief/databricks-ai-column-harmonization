@@ -40,8 +40,6 @@ resources:
           default: my_catalog
         - name: schema_name
           default: harmonizing_agent
-        - name: country_code
-          default: ES
         - name: source_country
           default: Spain
         - name: ai_endpoint

@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS {DB}.`property_insurance_monthly_raw` (
   fecha_carga               TIMESTAMP COMMENT 'Technical load timestamp'
 )
 USING DELTA
-COMMENT 'Spain property insurance monthly raw data — 24 local Spanish columns. Source system: ES_PROPERTY_RAW.'
+COMMENT 'Raw source data with local column names. Created by the data generation or ingestion step.'
 """)
 
 execute_ddl("property_insurance_monthly", f"""
@@ -131,11 +131,11 @@ COMMENT 'Harmonized property insurance monthly data — global English column na
 
 # COMMAND ----------
 
-execute_ddl("source_column_inventory_es", f"""
-CREATE TABLE IF NOT EXISTS {DB}.`source_column_inventory_es` (
-  source_system      STRING           COMMENT 'Source system identifier e.g. ES_PROPERTY_RAW',
+execute_ddl("source_column_inventory", f"""
+CREATE TABLE IF NOT EXISTS {DB}.`source_column_inventory` (
+  source_system      STRING           COMMENT 'Source system identifier from config',
   source_table       STRING           COMMENT 'Source table name',
-  local_column_name  STRING           COMMENT 'Column name in the local Spanish source table',
+  local_column_name  STRING           COMMENT 'Column name in the local source table',
   local_data_type    STRING           COMMENT 'Data type of the local column',
   sample_values      ARRAY<STRING>    COMMENT 'Up to 5 non-null distinct sample values as strings',
   ordinal_position   INT              COMMENT 'Column position in source table schema',
@@ -143,7 +143,7 @@ CREATE TABLE IF NOT EXISTS {DB}.`source_column_inventory_es` (
   detected_at        TIMESTAMP        COMMENT 'When this column was first inventoried'
 )
 USING DELTA
-COMMENT 'Inventory of all source columns detected in the Spain raw table, with sample values for AI mapping.'
+COMMENT 'Inventory of all source columns detected in the raw table, with sample values for AI mapping.'
 """)
 
 execute_ddl("global_target_columns", f"""
@@ -161,15 +161,15 @@ USING DELTA
 COMMENT 'Authoritative global English column definitions. Shared across all source countries.'
 """)
 
-execute_ddl("column_mapping_candidates_es", f"""
-CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_candidates_es` (
+execute_ddl("column_mapping_candidates", f"""
+CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_candidates` (
   candidate_id               BIGINT    COMMENT 'Surrogate row identifier',
   source_system              STRING    COMMENT 'Source system identifier',
   source_table               STRING    COMMENT 'Source table name',
-  local_column_name          STRING    COMMENT 'Local Spanish column name',
+  local_column_name          STRING    COMMENT 'Local source column name',
   local_data_type            STRING    COMMENT 'Data type of the local column',
   local_sample_values        ARRAY<STRING> COMMENT 'Sample values used as AI context',
-  proposed_global_column_name STRING   COMMENT 'AI-proposed global English column name',
+  proposed_global_column_name STRING   COMMENT 'AI-proposed global column name',
   proposed_global_data_type  STRING    COMMENT 'AI-proposed global data type',
   proposed_match_type        STRING    COMMENT 'AI-proposed match type: DIRECT | SEMANTIC_TRANSLATION | DERIVED | NO_MATCH',
   mapping_rationale          STRING    COMMENT 'AI rationale for the proposed mapping',
@@ -187,15 +187,15 @@ CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_candidates_es` (
   updated_at                 TIMESTAMP COMMENT 'When this candidate was last updated'
 )
 USING DELTA
-COMMENT 'AI-proposed column mapping candidates for Spain source columns. Human reviewers approve, correct, or reject each row.'
+COMMENT 'AI-proposed column mapping candidates. Human reviewers approve, correct, or reject each row.'
 """)
 
-execute_ddl("column_mapping_dictionary_es", f"""
-CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_dictionary_es` (
+execute_ddl("column_mapping_dictionary", f"""
+CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_dictionary` (
   source_system      STRING    COMMENT 'Source system identifier',
   source_table       STRING    COMMENT 'Source table name',
-  local_column_name  STRING    COMMENT 'Local Spanish column name',
-  global_column_name STRING    COMMENT 'Approved global English column name',
+  local_column_name  STRING    COMMENT 'Local source column name',
+  global_column_name STRING    COMMENT 'Approved global column name',
   match_type         STRING    COMMENT 'Approved match type',
   approved_by        STRING    COMMENT 'Identity who approved this mapping',
   approved_at        TIMESTAMP COMMENT 'When the mapping was approved',
@@ -206,11 +206,11 @@ CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_dictionary_es` (
   updated_at         TIMESTAMP COMMENT 'When this dictionary entry was last updated'
 )
 USING DELTA
-COMMENT 'Approved column mapping dictionary. Maps each local Spanish column name to its global English equivalent.'
+COMMENT 'Approved column mapping dictionary. Maps each local source column name to its global equivalent.'
 """)
 
-execute_ddl("column_mapping_audit_es", f"""
-CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_audit_es` (
+execute_ddl("column_mapping_audit", f"""
+CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_audit` (
   audit_id              BIGINT    COMMENT 'Audit event surrogate identifier',
   local_column_name     STRING    COMMENT 'The source column that was reviewed',
   old_review_status     STRING    COMMENT 'Review status before the action',
@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_audit_es` (
   action_source         STRING    COMMENT 'Source of the action: DATABRICKS_APP | SQL_DIRECT'
 )
 USING DELTA
-COMMENT 'Immutable audit trail of every review action performed on column_mapping_candidates_es.'
+COMMENT 'Immutable audit trail of every review action on column_mapping_candidates.'
 """)
 
 # COMMAND ----------
@@ -248,13 +248,13 @@ def _add_column_if_missing(table_ref, col_name, col_type, col_comment):
         raise
 
 _add_column_if_missing(
-    f"{DB}.`column_mapping_candidates_es`",
+    f"{DB}.`column_mapping_candidates`",
     "app_decision_source", "STRING",
     "Source of review decision: DATABRICKS_APP | SQL_DIRECT | NULL for pending"
 )
 
 _add_column_if_missing(
-    f"{DB}.`column_mapping_audit_es`",
+    f"{DB}.`column_mapping_audit`",
     "action_source", "STRING",
     "Source of the action: DATABRICKS_APP | SQL_DIRECT"
 )
@@ -265,12 +265,12 @@ _add_column_if_missing(
 
 # COMMAND ----------
 
-execute_ddl("value_mapping_candidates_es", f"""
-CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_candidates_es` (
+execute_ddl("value_mapping_candidates", f"""
+CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_candidates` (
   candidate_id              BIGINT    COMMENT 'Surrogate row identifier',
   source_field              STRING    COMMENT 'Global field name that holds this value',
-  raw_value                 STRING    COMMENT 'Raw Spanish categorical value from source',
-  proposed_harmonized_value STRING    COMMENT 'AI-proposed English equivalent',
+  raw_value                 STRING    COMMENT 'Raw categorical value from source',
+  proposed_harmonized_value STRING    COMMENT 'AI-proposed harmonized equivalent',
   proposed_description      STRING    COMMENT 'AI-proposed description of the value',
   confidence                STRING    COMMENT 'AI confidence: HIGH | MEDIUM | LOW',
   ai_error_status           STRING    COMMENT 'AI_ERROR if the AI call failed; NULL if successful',
@@ -283,14 +283,14 @@ CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_candidates_es` (
   updated_at                TIMESTAMP COMMENT 'When this candidate was last updated'
 )
 USING DELTA
-COMMENT 'Optional value translation candidates. Spanish categorical values proposed for English equivalents.'
+COMMENT 'Optional value translation candidates. Source categorical values proposed for harmonized equivalents.'
 """)
 
-execute_ddl("value_mapping_dictionary_es", f"""
-CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_dictionary_es` (
+execute_ddl("value_mapping_dictionary", f"""
+CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_dictionary` (
   source_field       STRING    COMMENT 'Global field name',
-  raw_value          STRING    COMMENT 'Original Spanish categorical value',
-  harmonized_value   STRING    COMMENT 'Approved English equivalent value',
+  raw_value          STRING    COMMENT 'Original source categorical value',
+  harmonized_value   STRING    COMMENT 'Approved harmonized value',
   approval_status    STRING    COMMENT 'APPROVED | CORRECTED',
   approved_by        STRING    COMMENT 'Identity who approved this translation',
   approved_at        TIMESTAMP COMMENT 'When the translation was approved',
@@ -300,7 +300,7 @@ CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_dictionary_es` (
   updated_at         TIMESTAMP COMMENT 'When this entry was last updated'
 )
 USING DELTA
-COMMENT 'Approved value translation dictionary. Maps Spanish categorical values to English equivalents.'
+COMMENT 'Approved value translation dictionary. Maps source categorical values to harmonized equivalents.'
 """)
 
 # COMMAND ----------
@@ -368,7 +368,7 @@ SELECT
   local_sample_values, proposed_global_column_name, proposed_global_data_type,
   proposed_match_type, mapping_rationale, confidence, ai_error_status,
   review_status, mandatory_flag, created_at
-FROM {DB}.`column_mapping_candidates_es`
+FROM {DB}.`column_mapping_candidates`
 WHERE review_status = 'PENDING'
 ORDER BY mandatory_flag DESC, confidence DESC, local_column_name
 """)
@@ -379,7 +379,7 @@ SELECT
   review_status, mandatory_flag, confidence,
   COUNT(*) AS count,
   SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
-FROM {DB}.`column_mapping_candidates_es`
+FROM {DB}.`column_mapping_candidates`
 GROUP BY review_status, mandatory_flag, confidence
 """)
 
@@ -390,26 +390,26 @@ WITH mandatory AS (
          review_status, final_global_column_name, final_match_type,
          reviewed_by, reviewed_at, app_decision_source,
          CASE WHEN review_status IN ('APPROVED','CORRECTED') THEN TRUE ELSE FALSE END AS is_ready
-  FROM {DB}.`column_mapping_candidates_es`
+  FROM {DB}.`column_mapping_candidates`
   WHERE mandatory_flag = TRUE
 )
 SELECT * FROM mandatory
 ORDER BY is_ready ASC, mandatory_column_name
 """)
 
-execute_ddl("vw_column_mapping_low_conf_es", f"""
-CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_low_conf_es` AS
+execute_ddl("vw_column_mapping_low_conf", f"""
+CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_low_conf` AS
 SELECT
   candidate_id, source_system, local_column_name, local_data_type,
   proposed_global_column_name, proposed_match_type, confidence,
   ai_error_status, review_status, mandatory_flag, mapping_rationale
-FROM {DB}.`column_mapping_candidates_es`
+FROM {DB}.`column_mapping_candidates`
 WHERE UPPER(confidence) = 'LOW' OR ai_error_status IS NOT NULL
 ORDER BY mandatory_flag DESC, local_column_name
 """)
 
-execute_ddl("vw_column_mapping_coverage_es", f"""
-CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_coverage_es` AS
+execute_ddl("vw_column_mapping_coverage", f"""
+CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_coverage` AS
 SELECT
   g.global_column_name, g.global_data_type, g.semantic_group,
   g.required_flag, g.business_definition,
@@ -422,7 +422,7 @@ SELECT
     ELSE 'UNKNOWN'
   END AS coverage_status
 FROM {DB}.`global_target_columns` g
-LEFT JOIN {DB}.`column_mapping_candidates_es` c
+LEFT JOIN {DB}.`column_mapping_candidates` c
   ON g.global_column_name = COALESCE(c.final_global_column_name, c.proposed_global_column_name)
 ORDER BY g.semantic_group, g.global_column_name
 """)

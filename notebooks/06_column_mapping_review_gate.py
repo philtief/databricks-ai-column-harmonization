@@ -5,14 +5,11 @@
 # MAGIC **This notebook is a workflow gate.**
 # MAGIC
 # MAGIC It checks that all mandatory source columns have been reviewed (APPROVED or CORRECTED)
-# MAGIC by the Spain local entity via the Column Mapping Review Databricks App. If any mandatory
-# MAGIC column is still PENDING or REJECTED without a corrected target, the notebook raises an
-# MAGIC exception and the workflow stops.
+# MAGIC via the Column Mapping Review Databricks App. If any mandatory column is still
+# MAGIC PENDING or REJECTED without a corrected target, the notebook raises an exception
+# MAGIC and the workflow stops.
 # MAGIC
-# MAGIC **Mandatory columns (14):**
-# MAGIC `id_registro, anio, mes, codigo_poliza, tipo_riesgo, provincia, canal_distribucion,
-# MAGIC prima_neta, prima_bruta, num_siniestros_declarados, num_siniestros_pagados,
-# MAGIC segmento_cliente, cobertura_principal, moneda`
+# MAGIC Mandatory columns are loaded from `config/harmonization_config.yaml`.
 # MAGIC
 # MAGIC **To unblock:** Review pending mappings using the Column Mapping Review Databricks App,
 # MAGIC then re-run this task.
@@ -35,11 +32,11 @@ catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name  = dbutils.widgets.get("schema_name").strip()
 
 DB            = f"`{catalog_name}`.`{schema_name}`"
-CAND_TABLE    = f"{DB}.`column_mapping_candidates_es`"
-OPS_TABLE     = f"{DB}.`workflow_run_metrics`"
-SOURCE_SYSTEM = "ES_PROPERTY_RAW"
-
-_cfg = load_harmonization_config()
+_cfg          = load_harmonization_config()
+_refs         = get_table_refs(_cfg, DB)
+CAND_TABLE    = _refs["cand_table"]
+OPS_TABLE     = _refs["ops_table"]
+SOURCE_SYSTEM = _refs["source_system"]
 MANDATORY_COLUMNS = _cfg["mandatory_source_columns"] if _cfg else [
     "id_registro", "anio", "mes", "codigo_poliza", "tipo_riesgo",
     "provincia", "canal_distribucion", "prima_neta", "prima_bruta",
@@ -202,7 +199,7 @@ log_run_metric(spark, OPS_TABLE, RUN_ID, "column_mapping_review_gate", gate_stat
 if gate_status == "BLOCKED":
     raise Exception(
         f"COLUMN MAPPING GATE BLOCKED: {blocking_count} mandatory column(s) are still PENDING or unresolved. "
-        f"Spain local entity must review pending mappings using the Column Mapping Review Databricks App, "
+        f"Review pending mappings using the Column Mapping Review Databricks App, "
         f"then re-run this task. "
         f"Pending: {[r['local_column_name'] for r in pending_blocking]}. "
         f"Rejected-no-target: {[r['local_column_name'] for r in rejected_blocking]}. "

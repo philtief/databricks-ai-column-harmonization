@@ -35,16 +35,16 @@ catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name  = dbutils.widgets.get("schema_name").strip()
 
 DB           = f"`{catalog_name}`.`{schema_name}`"
-RAW_TABLE    = f"{DB}.`property_insurance_monthly_raw`"
-HARM_TABLE   = f"{DB}.`property_insurance_monthly`"
-DICT_TABLE   = f"{DB}.`column_mapping_dictionary_es`"
-CAND_TABLE   = f"{DB}.`column_mapping_candidates_es`"
-DQ_TABLE     = f"{DB}.`data_quality_results`"
-USAGE_TABLE  = f"{DB}.`ai_mapping_usage_metrics`"
-OPS_TABLE    = f"{DB}.`workflow_run_metrics`"
-SOURCE_SYSTEM = "ES_PROPERTY_RAW"
-
-_cfg = load_harmonization_config()
+_cfg         = load_harmonization_config()
+_refs        = get_table_refs(_cfg, DB)
+RAW_TABLE    = _refs["raw_table"]
+HARM_TABLE   = _refs["harm_table"]
+DICT_TABLE   = _refs["dict_table"]
+CAND_TABLE   = _refs["cand_table"]
+DQ_TABLE     = _refs["dq_table"]
+USAGE_TABLE  = _refs["usage_table"]
+OPS_TABLE    = _refs["ops_table"]
+SOURCE_SYSTEM = _refs["source_system"]
 MANDATORY_COLUMNS = _cfg["mandatory_source_columns"] if _cfg else [
     "id_registro", "anio", "mes", "codigo_poliza", "tipo_riesgo",
     "provincia", "canal_distribucion", "prima_neta", "prima_bruta",

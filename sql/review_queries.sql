@@ -55,7 +55,7 @@ SELECT
     review_status,
     mandatory_flag,
     mapping_rationale
-FROM YOUR_CATALOG.harmonizing_agent.vw_column_mapping_low_conf_es
+FROM YOUR_CATALOG.harmonizing_agent.vw_column_mapping_low_conf
 ORDER BY mandatory_flag DESC, local_column_name;
 
 
@@ -71,7 +71,7 @@ SELECT
     final_global_column_name,
     reviewed_by,
     reviewed_at
-FROM YOUR_CATALOG.harmonizing_agent.column_mapping_candidates_es
+FROM YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 WHERE mandatory_flag = TRUE
 ORDER BY review_status, local_column_name;
 
@@ -82,7 +82,7 @@ SELECT
     mandatory_flag,
     COUNT(*) AS count,
     COLLECT_LIST(local_column_name) AS columns
-FROM YOUR_CATALOG.harmonizing_agent.column_mapping_candidates_es
+FROM YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 GROUP BY review_status, mandatory_flag
 ORDER BY mandatory_flag DESC, review_status;
 
@@ -92,7 +92,7 @@ ORDER BY mandatory_flag DESC, review_status;
 -- ============================================================
 
 -- 2.1  Approve a single column mapping (example: 'anio')
-UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates_es
+UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 SET
     review_status          = 'APPROVED',
     final_global_column_name = proposed_global_column_name,
@@ -106,7 +106,7 @@ WHERE local_column_name = 'anio'
 
 
 -- 2.2  Bulk approve all non-error PENDING mandatory columns
-UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates_es
+UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 SET
     review_status          = 'APPROVED',
     final_global_column_name = proposed_global_column_name,
@@ -123,7 +123,7 @@ WHERE mandatory_flag = TRUE
 
 
 -- 2.3  Bulk approve ALL pending candidates with valid proposals
-UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates_es
+UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 SET
     review_status          = 'APPROVED',
     final_global_column_name = proposed_global_column_name,
@@ -142,7 +142,7 @@ WHERE review_status = 'PENDING'
 -- ============================================================
 
 -- 3.1  Override AI proposal (example: correct 'ratio_siniestralidad')
-UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates_es
+UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 SET
     review_status          = 'CORRECTED',
     final_global_column_name = 'loss_ratio',
@@ -160,7 +160,7 @@ WHERE local_column_name = 'ratio_siniestralidad'
 -- ============================================================
 
 -- 4.1  Reject fecha_carga (technical metadata, not a business field)
-UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates_es
+UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 SET
     review_status  = 'REJECTED',
     reviewed_by    = current_user(),
@@ -185,7 +185,7 @@ SELECT
     approved_by,
     approved_at,
     mapping_comment
-FROM YOUR_CATALOG.harmonizing_agent.column_mapping_dictionary_es
+FROM YOUR_CATALOG.harmonizing_agent.column_mapping_dictionary
 WHERE active_flag = TRUE
 ORDER BY local_column_name;
 
@@ -199,7 +199,7 @@ SELECT
     confidence,
     ai_error_status,
     'BLOCKING' AS issue_type
-FROM YOUR_CATALOG.harmonizing_agent.column_mapping_candidates_es
+FROM YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 WHERE mandatory_flag = TRUE
   AND (
       review_status = 'PENDING'

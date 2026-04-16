@@ -6,21 +6,21 @@ A Streamlit application running on Databricks Apps that allows business users to
 
 The app connects to Unity Catalog and provides a UI for:
 
-- **Reviewing** AI-proposed column mappings in `column_mapping_candidates_es`
+- **Reviewing** AI-proposed column mappings in `column_mapping_candidates`
 - **Approving** mappings where the AI proposal is correct
 - **Correcting** mappings by selecting a different global column and match type
 - **Rejecting** mappings that cannot be mapped to any global column
 - **Monitoring** overall review progress via a dashboard
 - **Checking publish readiness** and triggering the harmonization workflow
 
-Every decision is recorded in `column_mapping_audit_es` for traceability.
+Every decision is recorded in `column_mapping_audit` for traceability.
 
 ## Tables Used
 
 | Table | Purpose |
 |---|---|
-| `column_mapping_candidates_es` | Main review table (one row per local column) |
-| `column_mapping_audit_es` | Audit log (one row per review action) |
+| `column_mapping_candidates` | Main review table (one row per local column) |
+| `column_mapping_audit` | Audit log (one row per review action) |
 | `global_target_columns` | Reference list of valid global column names |
 
 ## Deploy

@@ -19,11 +19,12 @@ SCHEMA = os.environ.get("SCHEMA_NAME", "harmonizing_agent")
 WAREHOUSE_ID = os.environ.get("DATABRICKS_WAREHOUSE_ID", "")
 WORKFLOW_JOB_ID = os.environ.get("WORKFLOW_JOB_ID", "")
 
-CANDIDATES_TABLE = f"{CATALOG}.{SCHEMA}.column_mapping_candidates_es"
-AUDIT_TABLE = f"{CATALOG}.{SCHEMA}.column_mapping_audit_es"
+CANDIDATES_TABLE = f"{CATALOG}.{SCHEMA}.column_mapping_candidates"
+AUDIT_TABLE = f"{CATALOG}.{SCHEMA}.column_mapping_audit"
 GLOBAL_COLUMNS_TABLE = f"{CATALOG}.{SCHEMA}.global_target_columns"
 
-MANDATORY_COLUMNS = [
+# Spain demo defaults — overridden by config YAML when CONFIG_PATH is set
+_DEFAULT_MANDATORY_COLUMNS = [
     "id_registro",
     "anio",
     "mes",
@@ -39,6 +40,24 @@ MANDATORY_COLUMNS = [
     "cobertura_principal",
     "moneda",
 ]
+
+
+def _load_mandatory_columns() -> list[str]:
+    """Load mandatory columns from config YAML, with Spain defaults as fallback."""
+    config_path = os.environ.get("CONFIG_PATH", "")
+    if config_path:
+        try:
+            import yaml
+
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            return list(config.get("mandatory_source_columns", _DEFAULT_MANDATORY_COLUMNS))
+        except Exception:
+            pass
+    return list(_DEFAULT_MANDATORY_COLUMNS)
+
+
+MANDATORY_COLUMNS = _load_mandatory_columns()
 
 MATCH_TYPE_OPTIONS = ["DIRECT", "SEMANTIC_TRANSLATION", "DERIVED", "NO_MATCH"]
 
@@ -325,7 +344,7 @@ def _reset_to_pending(local_column_name: str, user: str) -> bool:
 
 @st.cache_data(ttl=30, show_spinner=False)
 def load_candidates() -> pd.DataFrame:
-    """Load all rows from column_mapping_candidates_es."""
+    """Load all rows from column_mapping_candidates."""
     return run_sql(f"SELECT * FROM {CANDIDATES_TABLE}")
 
 
@@ -809,7 +828,7 @@ def page_publish_readiness():
     if all_mandatory_resolved:
         st.success(
             "READY TO PUBLISH\n\n"
-            "All 14 mandatory columns have been approved or corrected. "
+            f"All {len(MANDATORY_COLUMNS)} mandatory columns have been approved or corrected. "
             "You can now re-run the workflow from task **column_mapping_review_gate**."
         )
     else:

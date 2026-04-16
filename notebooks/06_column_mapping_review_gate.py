@@ -54,8 +54,6 @@ print(f"Config: {DB}")
 
 import datetime as _dt
 from uuid import uuid4
-from pyspark.sql import functions as F
-
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
 

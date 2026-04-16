@@ -30,7 +30,7 @@ print(f"Config: catalog={catalog_name}, schema={schema_name}")
 # because the metastore has no storage root configured. Verify it exists and continue.
 try:
     spark.sql(f"CREATE CATALOG IF NOT EXISTS `{catalog_name}`")
-    print(f"CREATE CATALOG succeeded.")
+    print("CREATE CATALOG succeeded.")
 except Exception as _ce:
     print(f"[WARN] CREATE CATALOG failed ({_ce}). Checking if it already exists ...")
     existing = [r[0] for r in spark.sql(f"SHOW CATALOGS LIKE '{catalog_name}'").collect()]

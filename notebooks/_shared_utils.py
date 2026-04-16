@@ -9,7 +9,6 @@
 
 import yaml
 import datetime as _dt
-from uuid import uuid4
 from pyspark.sql.types import StructType, StructField, StringType, LongType, TimestampType
 
 # Schema for workflow_run_metrics (used by every notebook)
@@ -52,7 +51,6 @@ def load_harmonization_config():
         config_ws_path = f"{parent_dir}/../config/harmonization_config.yaml"
 
         # Read from workspace filesystem
-        import subprocess
         # On Databricks, workspace files are accessible via /Workspace prefix
         local_path = f"/Workspace{config_ws_path}"
         with open(local_path) as f:

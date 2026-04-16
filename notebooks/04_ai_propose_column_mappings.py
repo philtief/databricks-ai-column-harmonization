@@ -69,7 +69,7 @@ from uuid import uuid4
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     StructType, StructField,
-    StringType, LongType, DoubleType, BooleanType, TimestampType, ArrayType
+    StringType, LongType, DoubleType, TimestampType
 )
 
 RUN_ID = str(uuid4())

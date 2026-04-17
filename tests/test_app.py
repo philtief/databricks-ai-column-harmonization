@@ -83,22 +83,22 @@ class TestEscapeFunction:
 class TestConfidenceBadge:
     def test_high_confidence(self):
         app = _import_app()
-        result = app.confidence_badge("HIGH")
+        result = app.confidence_pill("HIGH")
         assert "HIGH" in result
 
     def test_medium_confidence(self):
         app = _import_app()
-        result = app.confidence_badge("MEDIUM")
+        result = app.confidence_pill("MEDIUM")
         assert "MEDIUM" in result
 
     def test_low_confidence(self):
         app = _import_app()
-        result = app.confidence_badge("LOW")
+        result = app.confidence_pill("LOW")
         assert "LOW" in result
 
     def test_unknown_confidence(self):
         app = _import_app()
-        result = app.confidence_badge("UNKNOWN")
+        result = app.confidence_pill("UNKNOWN")
         assert "UNKNOWN" in result
 
 

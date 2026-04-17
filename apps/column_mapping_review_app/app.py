@@ -62,6 +62,272 @@ MANDATORY_COLUMNS = _load_mandatory_columns()
 MATCH_TYPE_OPTIONS = ["DIRECT", "SEMANTIC_TRANSLATION", "DERIVED", "NO_MATCH"]
 
 # ---------------------------------------------------------------------------
+# Theme constants
+# ---------------------------------------------------------------------------
+PRIMARY_BLUE = "#003781"
+SECONDARY_BLUE = "#0078DA"
+DARK_BLUE = "#003D63"
+TEXT_PRIMARY = "#1A1A2E"
+TEXT_SECONDARY = "#414141"
+BG_LIGHT = "#F5F5F5"
+BG_WHITE = "#FFFFFF"
+BORDER_COLOR = "#E0E2E6"
+SUCCESS_GREEN = "#10A251"
+WARNING_ORANGE = "#E15200"
+ERROR_RED = "#DC3149"
+TEAL_ACCENT = "#00908D"
+
+
+# ---------------------------------------------------------------------------
+# Custom CSS
+# ---------------------------------------------------------------------------
+def inject_custom_css():
+    st.markdown(
+        f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
+
+        /* --- Global typography --- */
+        html, body, [class*="css"] {{
+            font-family: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: {TEXT_PRIMARY};
+        }}
+
+        /* --- Page background --- */
+        .stApp {{
+            background-color: {BG_LIGHT};
+        }}
+
+        /* --- Sidebar --- */
+        section[data-testid="stSidebar"] {{
+            background-color: {PRIMARY_BLUE};
+            border-right: none;
+        }}
+        section[data-testid="stSidebar"] * {{
+            color: #FFFFFF !important;
+        }}
+        section[data-testid="stSidebar"] .stRadio label {{
+            color: rgba(255, 255, 255, 0.85) !important;
+            font-size: 0.95rem;
+            font-weight: 400;
+            padding: 6px 0;
+        }}
+        section[data-testid="stSidebar"] .stRadio label:hover {{
+            color: #FFFFFF !important;
+        }}
+        section[data-testid="stSidebar"] .stRadio label[data-checked="true"],
+        section[data-testid="stSidebar"] .stRadio [aria-checked="true"] + label {{
+            color: #FFFFFF !important;
+            font-weight: 600;
+        }}
+        section[data-testid="stSidebar"] hr {{
+            border-color: rgba(255, 255, 255, 0.2);
+        }}
+        section[data-testid="stSidebar"] .stMarkdown p {{
+            color: rgba(255, 255, 255, 0.9) !important;
+        }}
+        section[data-testid="stSidebar"] code {{
+            color: rgba(255, 255, 255, 0.95) !important;
+            background-color: rgba(255, 255, 255, 0.15) !important;
+        }}
+
+        /* --- Headers --- */
+        h1 {{
+            color: {PRIMARY_BLUE} !important;
+            font-weight: 700 !important;
+            font-size: 1.85rem !important;
+            letter-spacing: -0.01em;
+            border-bottom: 3px solid {PRIMARY_BLUE};
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.5rem !important;
+        }}
+        h2 {{
+            color: {DARK_BLUE} !important;
+            font-weight: 600 !important;
+            font-size: 1.35rem !important;
+        }}
+        h3 {{
+            color: {TEXT_PRIMARY} !important;
+            font-weight: 600 !important;
+            font-size: 1.1rem !important;
+        }}
+
+        /* --- Metric cards --- */
+        div[data-testid="stMetric"] {{
+            background-color: {BG_WHITE};
+            border: 1px solid {BORDER_COLOR};
+            border-radius: 8px;
+            padding: 16px 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        }}
+        div[data-testid="stMetric"] label {{
+            color: {TEXT_SECONDARY} !important;
+            font-size: 0.8rem !important;
+            font-weight: 500 !important;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }}
+        div[data-testid="stMetric"] [data-testid="stMetricValue"] {{
+            color: {PRIMARY_BLUE} !important;
+            font-size: 1.75rem !important;
+            font-weight: 700 !important;
+        }}
+
+        /* --- Data tables --- */
+        .stDataFrame {{
+            border: 1px solid {BORDER_COLOR};
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+        .stDataFrame thead th {{
+            background-color: {PRIMARY_BLUE} !important;
+            color: #FFFFFF !important;
+            font-weight: 600 !important;
+            font-size: 0.82rem !important;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }}
+
+        /* --- Buttons --- */
+        .stButton > button[kind="primary"],
+        .stButton > button[data-testid="stBaseButton-primary"] {{
+            background-color: {PRIMARY_BLUE} !important;
+            border: none !important;
+            border-radius: 6px !important;
+            font-weight: 600 !important;
+            font-size: 0.9rem !important;
+            padding: 0.5rem 1.5rem !important;
+            letter-spacing: 0.02em;
+            transition: background-color 0.2s ease;
+        }}
+        .stButton > button[kind="primary"]:hover,
+        .stButton > button[data-testid="stBaseButton-primary"]:hover {{
+            background-color: {SECONDARY_BLUE} !important;
+        }}
+        .stButton > button[kind="secondary"],
+        .stButton > button[data-testid="stBaseButton-secondary"] {{
+            background-color: transparent !important;
+            border: 1.5px solid {PRIMARY_BLUE} !important;
+            color: {PRIMARY_BLUE} !important;
+            border-radius: 6px !important;
+            font-weight: 600 !important;
+            transition: all 0.2s ease;
+        }}
+        .stButton > button[kind="secondary"]:hover,
+        .stButton > button[data-testid="stBaseButton-secondary"]:hover {{
+            background-color: {PRIMARY_BLUE} !important;
+            color: #FFFFFF !important;
+        }}
+
+        /* --- Expanders --- */
+        details[data-testid="stExpander"] {{
+            background-color: {BG_WHITE};
+            border: 1px solid {BORDER_COLOR};
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        }}
+        details[data-testid="stExpander"] summary {{
+            font-weight: 600;
+            color: {PRIMARY_BLUE};
+        }}
+
+        /* --- Forms --- */
+        .stForm {{
+            background-color: {BG_WHITE};
+            border: 1px solid {BORDER_COLOR};
+            border-radius: 8px;
+            padding: 1rem;
+        }}
+
+        /* --- Alerts --- */
+        .stAlert [data-testid="stAlertContentSuccess"] {{
+            color: {SUCCESS_GREEN};
+        }}
+        .stAlert [data-testid="stAlertContentError"] {{
+            color: {ERROR_RED};
+        }}
+
+        /* --- Selectbox / inputs --- */
+        .stSelectbox > div > div,
+        .stTextInput > div > div > input {{
+            border-radius: 6px !important;
+            border-color: {BORDER_COLOR} !important;
+        }}
+        .stSelectbox > div > div:focus-within,
+        .stTextInput > div > div > input:focus {{
+            border-color: {PRIMARY_BLUE} !important;
+            box-shadow: 0 0 0 1px {PRIMARY_BLUE} !important;
+        }}
+
+        /* --- Dividers --- */
+        hr {{
+            border-color: {BORDER_COLOR};
+        }}
+
+        /* --- Bar chart --- */
+        .stBarChart {{
+            background-color: {BG_WHITE};
+            border: 1px solid {BORDER_COLOR};
+            border-radius: 8px;
+            padding: 8px;
+        }}
+
+        /* --- Radio (main area) --- */
+        .stRadio > div {{
+            gap: 0.25rem;
+        }}
+
+        /* --- Hide Streamlit branding --- */
+        #MainMenu {{visibility: hidden;}}
+        footer {{visibility: hidden;}}
+        header {{visibility: hidden;}}
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# HTML helpers for professional badges
+# ---------------------------------------------------------------------------
+
+
+def confidence_pill(val: str) -> str:
+    """Return an HTML confidence pill."""
+    v = str(val).upper()
+    colors = {
+        "HIGH": (SUCCESS_GREEN, "#E8F5E9"),
+        "MEDIUM": (WARNING_ORANGE, "#FFF3E0"),
+        "LOW": (ERROR_RED, "#FFEBEE"),
+    }
+    fg, bg = colors.get(v, (TEXT_SECONDARY, BG_LIGHT))
+    return (
+        f'<span style="display:inline-block; padding:2px 10px; border-radius:12px; '
+        f"font-size:0.78rem; font-weight:600; color:{fg}; background:{bg}; "
+        f'border:1px solid {fg}22;">{v}</span>'
+    )
+
+
+def status_indicator(status: str) -> str:
+    """Return a clean status label with colored dot."""
+    s = str(status).upper()
+    color_map = {
+        "APPROVED": SUCCESS_GREEN,
+        "CORRECTED": TEAL_ACCENT,
+        "REJECTED": ERROR_RED,
+        "PENDING": WARNING_ORANGE,
+        "NOT_FOUND": TEXT_SECONDARY,
+    }
+    color = color_map.get(s, TEXT_SECONDARY)
+    return (
+        f'<span style="display:inline-flex; align-items:center; gap:6px; font-size:0.9rem;">'
+        f'<span style="display:inline-block; width:8px; height:8px; border-radius:50%; '
+        f'background:{color};"></span>'
+        f'<span style="font-weight:500; color:{TEXT_PRIMARY};">{s}</span></span>'
+    )
+
+
+# ---------------------------------------------------------------------------
 # Databricks SDK client (cached for the session)
 # ---------------------------------------------------------------------------
 
@@ -304,10 +570,11 @@ def _correct_mapping(
     return True
 
 
-def _reset_to_pending(local_column_name: str, user: str) -> bool:
-    """Reset a REJECTED mapping back to PENDING for re-review."""
+def _reset_to_pending(local_column_name: str, user: str, from_status: str = "REJECTED") -> bool:
+    """Reset a mapping back to PENDING for re-review."""
     col = _esc(local_column_name)
     usr = _esc(user)
+    fs = _esc(from_status)
 
     update_sql = f"""
     UPDATE {CANDIDATES_TABLE}
@@ -321,7 +588,7 @@ def _reset_to_pending(local_column_name: str, user: str) -> bool:
         reviewed_at              = NULL,
         updated_at               = current_timestamp()
     WHERE local_column_name = '{col}'
-      AND review_status = 'REJECTED'
+      AND review_status = '{fs}'
     """
     rows = execute_dml(update_sql)
     if rows == -1:
@@ -390,28 +657,6 @@ def get_current_user() -> str:
     except AttributeError:
         pass
     return os.environ.get("DATABRICKS_APP_CURRENT_USER_NAME", "app-service-principal")
-
-
-# ---------------------------------------------------------------------------
-# Confidence badge helper
-# ---------------------------------------------------------------------------
-
-CONFIDENCE_COLORS = {
-    "HIGH": "green",
-    "MEDIUM": "orange",
-    "LOW": "red",
-}
-
-CONFIDENCE_EMOJI = {
-    "HIGH": "🟢",
-    "MEDIUM": "🟡",
-    "LOW": "🔴",
-}
-
-
-def confidence_badge(val: str) -> str:
-    emoji = CONFIDENCE_EMOJI.get(str(val).upper(), "⚪")
-    return f"{emoji} {val}"
 
 
 # ---------------------------------------------------------------------------
@@ -485,21 +730,13 @@ def page_pending_review(user: str):
             lambda v: ", ".join(v) if isinstance(v, list) else str(v) if pd.notna(v) else ""
         )
 
-    # Add confidence badge column
-    if "confidence" in display_df.columns:
-        display_df["confidence_display"] = display_df["confidence"].apply(
-            lambda v: confidence_badge(v) if pd.notna(v) else "⚪ N/A"
-        )
-
     column_config = {}
     if "mandatory_flag" in display_df.columns:
         column_config["mandatory_flag"] = st.column_config.CheckboxColumn(
             "Mandatory", help="Whether this column is mandatory for publish readiness"
         )
-    if "confidence_display" in display_df.columns:
-        column_config["confidence_display"] = st.column_config.TextColumn("Confidence")
     if "confidence" in display_df.columns:
-        column_config["confidence"] = st.column_config.TextColumn("Confidence (raw)", disabled=True)
+        column_config["confidence"] = st.column_config.TextColumn("Confidence")
     if "mapping_rationale" in display_df.columns:
         column_config["mapping_rationale"] = st.column_config.TextColumn("Rationale", width="large")
     if "local_sample_values" in display_df.columns:
@@ -507,7 +744,7 @@ def page_pending_review(user: str):
 
     st.dataframe(display_df, use_container_width=True, column_config=column_config)
 
-    # --- Review expander ---
+    # --- Review section ---
     with st.expander("Review a mapping", expanded=True):
         column_names = df_pending["local_column_name"].tolist() if "local_column_name" in df_pending.columns else []
         if not column_names:
@@ -528,12 +765,14 @@ def page_pending_review(user: str):
             with detail_col1:
                 st.markdown(f"**Data Type:** {row.get('local_data_type', 'N/A')}")
                 st.markdown(f"**Sample Values:** {row.get('local_sample_values', 'N/A')}")
-                st.markdown(f"**Mandatory:** {'Yes' if row.get('mandatory_flag') else 'No'}")
+                mandatory = "Yes" if row.get("mandatory_flag") else "No"
+                st.markdown(f"**Mandatory:** {mandatory}")
                 st.markdown(f"**AI Error:** {row.get('ai_error_status', 'None')}")
             with detail_col2:
                 st.markdown(f"**Proposed Global Column:** `{row.get('proposed_global_column_name', 'N/A')}`")
                 st.markdown(f"**Proposed Match Type:** {row.get('proposed_match_type', 'N/A')}")
-                st.markdown(f"**Confidence:** {confidence_badge(str(row.get('confidence', 'N/A')))}")
+                conf = str(row.get("confidence", "N/A"))
+                st.markdown(f"**Confidence:** {conf}", unsafe_allow_html=True)
                 st.markdown(f"**Rationale:** {row.get('mapping_rationale', 'N/A')}")
 
             st.divider()
@@ -623,7 +862,7 @@ def page_pending_review(user: str):
                             st.error("Correction failed. Check the error above.")
 
 
-def page_approved_mappings():
+def page_approved_mappings(user: str):
     st.header("Approved & Corrected Mappings")
 
     df_all = load_candidates()
@@ -659,6 +898,27 @@ def page_approved_mappings():
     ]
 
     st.dataframe(df[display_cols], use_container_width=True)
+
+    st.divider()
+    st.subheader("Move back to Pending")
+
+    col_names = df["local_column_name"].tolist() if "local_column_name" in df.columns else []
+    if not col_names:
+        return
+
+    unapprove_col = st.selectbox("Select column to move back to pending", col_names, key="unapprove_col")
+    if unapprove_col:
+        current_status = df.loc[df["local_column_name"] == unapprove_col, "review_status"].iloc[0]
+        if st.button("Reset to Pending", key="unapprove_btn"):
+            with st.spinner("Resetting..."):
+                ok = _reset_to_pending(unapprove_col, user, from_status=current_status)
+            if ok:
+                st.success(f"Reset to PENDING: `{unapprove_col}`")
+                invalidate_caches()
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error("Reset failed. Check the error above.")
 
 
 def page_rejected_mappings(user: str):
@@ -753,10 +1013,6 @@ def page_dashboard():
     if "local_column_name" in df_all.columns:
         mandatory_df = df_all[df_all["local_column_name"].isin(MANDATORY_COLUMNS)].copy()
         mandatory_approved = int((mandatory_df["review_status"].isin(["APPROVED", "CORRECTED"])).sum())
-        mandatory_pending_count = (
-            int(~mandatory_df["review_status"].isin(["APPROVED", "CORRECTED"])) if not mandatory_df.empty else 0
-        )
-        # Recalculate properly
         mandatory_pending_count = int((mandatory_df["review_status"].isin(["PENDING", "REJECTED"])).sum())
         mc1, mc2 = st.columns(2)
         mc1.metric("Mandatory Resolved", f"{mandatory_approved} / {len(MANDATORY_COLUMNS)}")
@@ -844,23 +1100,7 @@ def page_publish_readiness():
     for item in mandatory_statuses:
         status = item["status"]
         col_name = item["column"]
-        if status == "APPROVED":
-            icon = "✅"
-            label = "APPROVED"
-        elif status == "CORRECTED":
-            icon = "✅"
-            label = "CORRECTED"
-        elif status == "REJECTED":
-            icon = "❌"
-            label = "REJECTED"
-        elif status == "PENDING":
-            icon = "⏳"
-            label = "PENDING"
-        else:
-            icon = "❓"
-            label = status
-
-        st.markdown(f"{icon} **`{col_name}`** — {label}")
+        st.markdown(f"{status_indicator(status)} &nbsp; `{col_name}`", unsafe_allow_html=True)
 
     st.divider()
 
@@ -898,7 +1138,7 @@ def page_publish_readiness():
             "by triggering the workflow below."
         )
 
-        if st.button("🚀 Trigger Harmonization Workflow", type="primary", key="trigger_workflow_btn"):
+        if st.button("Trigger Harmonization Workflow", type="primary", key="trigger_workflow_btn"):
             with st.spinner("Triggering workflow..."):
                 try:
                     client = get_workspace_client()
@@ -925,23 +1165,54 @@ def page_publish_readiness():
 
 
 def main():
-    st.set_page_config(page_title="Column Mapping Review", layout="wide")
+    st.set_page_config(
+        page_title="Column Mapping Review",
+        page_icon="data:image/svg+xml,"
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>"
+        "<rect fill='%23003781' rx='4' width='24' height='24'/>"
+        "<path fill='white' d='M7 8h10v2H7zm0 3h10v2H7zm0 3h7v2H7z'/></svg>",
+        layout="wide",
+    )
+
+    inject_custom_css()
 
     user = get_current_user()
 
     # --- Sidebar ---
     with st.sidebar:
-        st.title("🗂️ Column Mapping Review")
-        st.markdown(f"**User:** `{user}`")
+        st.markdown(
+            """
+            <div style="padding: 0 0 12px 0;">
+                <div style="font-size: 1.4rem; font-weight: 700; letter-spacing: -0.01em;
+                            color: #FFFFFF; line-height: 1.2;">
+                    Column Mapping<br/>Review
+                </div>
+                <div style="font-size: 0.78rem; color: rgba(255,255,255,0.6);
+                            margin-top: 4px; letter-spacing: 0.03em; text-transform: uppercase;">
+                    Data Harmonization
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div style="font-size:0.85rem; color:rgba(255,255,255,0.7);">'
+            f'<span style="font-weight:600; color:#FFFFFF;">User:</span> '
+            f'<span style="color:rgba(255,255,255,0.9);">{user}</span></div>',
+            unsafe_allow_html=True,
+        )
         st.divider()
 
         # Status summary
-        st.markdown("**Review Status Summary**")
+        st.markdown("**Review Status**")
         try:
             summary_df = load_status_summary()
             if not summary_df.empty and "review_status" in summary_df.columns and "count" in summary_df.columns:
                 for _, row in summary_df.iterrows():
-                    st.markdown(f"- **{row['review_status']}**: {row['count']}")
+                    st.markdown(
+                        f"{status_indicator(row['review_status'])} &nbsp; **{row['count']}**",
+                        unsafe_allow_html=True,
+                    )
             else:
                 st.caption("No data available yet.")
         except Exception:
@@ -950,7 +1221,7 @@ def main():
         st.divider()
 
         page = st.radio(
-            "Navigate to",
+            "Navigate",
             [
                 "Pending Review Queue",
                 "Approved Mappings",
@@ -965,7 +1236,7 @@ def main():
     if page == "Pending Review Queue":
         page_pending_review(user)
     elif page == "Approved Mappings":
-        page_approved_mappings()
+        page_approved_mappings(user)
     elif page == "Rejected Mappings":
         page_rejected_mappings(user)
     elif page == "Review Dashboard":

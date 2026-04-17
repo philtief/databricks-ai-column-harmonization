@@ -14,11 +14,8 @@
 --   column_mapping_review_gate
 -- in the workflow Column_Mapping_To_Global_Model.
 --
--- Mandatory columns (14):
---   id_registro, anio, mes, codigo_poliza, tipo_riesgo,
---   provincia, canal_distribucion, prima_neta, prima_bruta,
---   num_siniestros_declarados, num_siniestros_pagados,
---   segmento_cliente, cobertura_principal, moneda
+-- Mandatory columns are defined in config/harmonization_config.yaml
+-- under the mandatory_source_columns key.
 -- ============================================================
 
 
@@ -91,7 +88,7 @@ ORDER BY mandatory_flag DESC, review_status;
 -- SECTION 2: APPROVE
 -- ============================================================
 
--- 2.1  Approve a single column mapping (example: 'anio')
+-- 2.1  Approve a single column mapping (replace 'your_column' with the local column name)
 UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 SET
     review_status          = 'APPROVED',
@@ -101,7 +98,7 @@ SET
     reviewed_at              = current_timestamp(),
     review_comment           = 'Approved after review',
     updated_at               = current_timestamp()
-WHERE local_column_name = 'anio'
+WHERE local_column_name = 'your_column'
   AND review_status = 'PENDING';
 
 
@@ -141,17 +138,17 @@ WHERE review_status = 'PENDING'
 -- SECTION 3: CORRECT
 -- ============================================================
 
--- 3.1  Override AI proposal (example: correct 'ratio_siniestralidad')
+-- 3.1  Override AI proposal (replace placeholders with your column names)
 UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 SET
     review_status          = 'CORRECTED',
-    final_global_column_name = 'loss_ratio',
+    final_global_column_name = 'correct_global_column_name',
     final_match_type         = 'SEMANTIC_TRANSLATION',
     reviewed_by              = current_user(),
     reviewed_at              = current_timestamp(),
-    review_comment           = 'Corrected: ratio_siniestralidad is the loss ratio',
+    review_comment           = 'Corrected: mapped to the correct global column',
     updated_at               = current_timestamp()
-WHERE local_column_name = 'ratio_siniestralidad'
+WHERE local_column_name = 'your_local_column'
   AND review_status = 'PENDING';
 
 
@@ -159,15 +156,15 @@ WHERE local_column_name = 'ratio_siniestralidad'
 -- SECTION 4: REJECT
 -- ============================================================
 
--- 4.1  Reject fecha_carga (technical metadata, not a business field)
+-- 4.1  Reject a column (replace 'your_column' and comment with your reason)
 UPDATE YOUR_CATALOG.harmonizing_agent.column_mapping_candidates
 SET
     review_status  = 'REJECTED',
     reviewed_by    = current_user(),
     reviewed_at    = current_timestamp(),
-    review_comment = 'Technical ETL load timestamp. Exclude from harmonized output.',
+    review_comment = 'Not a business field. Exclude from harmonized output.',
     updated_at     = current_timestamp()
-WHERE local_column_name = 'fecha_carga'
+WHERE local_column_name = 'your_column'
   AND review_status = 'PENDING';
 
 

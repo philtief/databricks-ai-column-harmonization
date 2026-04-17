@@ -57,6 +57,7 @@ extend-ignore = ["E203"]
 # Databricks notebooks: runtime globals (F821), cell imports (E402), unused imports
 # shared via %run (F401), f-strings in print statements (F541)
 "notebooks/*.py" = ["F821", "E402", "F401", "F541"]
+"examples/**/*.py" = ["F821", "E402", "F401", "F541"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

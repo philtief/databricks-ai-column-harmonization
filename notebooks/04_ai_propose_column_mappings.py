@@ -43,19 +43,9 @@ OPS_TABLE      = _refs["ops_table"]
 
 SOURCE_SYSTEM = _refs["source_system"]
 
-MANDATORY_COLUMNS = set(
-    _cfg["mandatory_source_columns"] if _cfg else [
-        "id_registro", "anio", "mes", "codigo_poliza", "tipo_riesgo",
-        "provincia", "canal_distribucion", "prima_neta", "prima_bruta",
-        "num_siniestros_declarados", "num_siniestros_pagados",
-        "segmento_cliente", "cobertura_principal", "moneda",
-    ]
-)
+MANDATORY_COLUMNS = set(_cfg["mandatory_source_columns"])
 
-AI_CONTEXT = (
-    _cfg["source_context"]["description"].strip() if _cfg
-    else "Spain property insurance monthly reporting. Source system: ES_PROPERTY_RAW."
-)
+AI_CONTEXT = _cfg["source_context"]["description"].strip()
 
 print(f"Config: {DB}, ai_endpoint={ai_endpoint}, mandatory_cols={len(MANDATORY_COLUMNS)}")
 
@@ -322,7 +312,7 @@ low_conf_count = (
 )
 
 # Token cost estimates (configurable in harmonization_config.yaml)
-_ai_cfg = _cfg.get("ai", {}) if _cfg else {}
+_ai_cfg = _cfg.get("ai", {})
 est_prompt_per_col = _ai_cfg.get("estimated_prompt_tokens_per_column", 200.0)
 est_response_per_col = _ai_cfg.get("estimated_response_tokens_per_column", 80.0)
 est_eur_per_1k = _ai_cfg.get("estimated_eur_per_1k_tokens", 0.002)

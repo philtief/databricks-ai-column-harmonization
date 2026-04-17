@@ -42,13 +42,7 @@ HARM_TABLE   = _refs["harm_table"]
 VDICT_TABLE  = _refs["vdict_table"]
 VCAND_TABLE  = _refs["vcand_table"]
 OPS_TABLE    = _refs["ops_table"]
-SEMANTIC_FIELDS = _cfg["semantic_fields"] if _cfg else [
-    "risk_type",
-    "distribution_channel",
-    "customer_segment",
-    "risk_zone",
-    "primary_coverage",
-]
+SEMANTIC_FIELDS = _cfg["semantic_fields"]
 
 print(f"Config: {DB}")
 

@@ -41,7 +41,7 @@ resources:
         - name: schema_name
           default: harmonizing_agent
         - name: source_country
-          default: Spain
+          default: ""  # Set to your source country name
         - name: ai_endpoint
           default: databricks-gpt-5-2
         - name: mapping_version
@@ -53,12 +53,14 @@ resources:
           notebook_task:
             notebook_path: ./notebooks/00_bootstrap_catalog.py
 
-        # -- Task 2: Generate 10k synthetic Spain raw data
-        - task_key: generate_spain_raw_data
+        # -- DEMO ONLY: Remove this task when using your own data source.
+        # -- If removed, update inventory_source_columns to depend only on
+        # -- create_global_model_and_control_tables.
+        - task_key: generate_demo_data
           depends_on:
             - task_key: bootstrap_catalog
           notebook_task:
-            notebook_path: ./notebooks/01_generate_spain_raw_data.py
+            notebook_path: ./examples/spain_demo/01_generate_spain_raw_data.py
 
         # -- Task 3: Create all tables, views, prepopulate global target columns
         - task_key: create_global_model_and_control_tables
@@ -70,7 +72,7 @@ resources:
         # -- Task 4: Inventory source columns with sample values
         - task_key: inventory_source_columns
           depends_on:
-            - task_key: generate_spain_raw_data
+            - task_key: generate_demo_data  # Remove this line when using your own data
             - task_key: create_global_model_and_control_tables
           notebook_task:
             notebook_path: ./notebooks/03_inventory_source_columns.py

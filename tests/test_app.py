@@ -103,9 +103,9 @@ class TestConfidenceBadge:
 
 
 class TestConstants:
-    def test_mandatory_columns_count(self):
+    def test_mandatory_columns_is_list(self):
         app = _import_app()
-        assert len(app.MANDATORY_COLUMNS) == 14
+        assert isinstance(app.MANDATORY_COLUMNS, list)
 
     def test_match_type_options(self):
         app = _import_app()

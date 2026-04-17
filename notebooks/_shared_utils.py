@@ -58,8 +58,11 @@ def load_harmonization_config():
         print(f"Config loaded from {config_ws_path}")
         return config
     except Exception as e:
-        print(f"[WARN] Could not load config ({e}). Using inline defaults.")
-        return None
+        raise RuntimeError(
+            f"FATAL: Could not load harmonization config ({e}). "
+            "Ensure config/harmonization_config.yaml is deployed with the bundle. "
+            "See config/harmonization_config.yaml.template for the expected format."
+        ) from e
 
 # COMMAND ----------
 
@@ -74,9 +77,9 @@ def get_table_refs(config, db_prefix):
     Table names are generic (no country suffix). Country isolation is
     handled at the schema level via the db_prefix.
     """
-    src_table = config["source_context"]["source_table"] if config else "property_insurance_monthly_raw"
-    tgt_table = config["target_model"]["table_name"] if config else "property_insurance_monthly"
-    src_system = config["source_context"]["source_system"] if config else "ES_PROPERTY_RAW"
+    src_table = config["source_context"]["source_table"]
+    tgt_table = config["target_model"]["table_name"]
+    src_system = config["source_context"]["source_system"]
 
     return {
         "raw_table": f"{db_prefix}.`{src_table}`",

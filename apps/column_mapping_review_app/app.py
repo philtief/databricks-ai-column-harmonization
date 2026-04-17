@@ -23,41 +23,27 @@ CANDIDATES_TABLE = f"{CATALOG}.{SCHEMA}.column_mapping_candidates"
 AUDIT_TABLE = f"{CATALOG}.{SCHEMA}.column_mapping_audit"
 GLOBAL_COLUMNS_TABLE = f"{CATALOG}.{SCHEMA}.global_target_columns"
 
-# Spain demo defaults — overridden by config YAML when CONFIG_PATH is set
-_DEFAULT_MANDATORY_COLUMNS = [
-    "id_registro",
-    "anio",
-    "mes",
-    "codigo_poliza",
-    "tipo_riesgo",
-    "provincia",
-    "canal_distribucion",
-    "prima_neta",
-    "prima_bruta",
-    "num_siniestros_declarados",
-    "num_siniestros_pagados",
-    "segmento_cliente",
-    "cobertura_principal",
-    "moneda",
-]
+# Mandatory columns are derived from the database at runtime (see _load_mandatory_columns_from_db).
+# During unit tests (no DB connection), this list stays empty.
+MANDATORY_COLUMNS: list[str] = []
 
 
-def _load_mandatory_columns() -> list[str]:
-    """Load mandatory columns from config YAML, with Spain defaults as fallback."""
-    config_path = os.environ.get("CONFIG_PATH", "")
-    if config_path:
-        try:
-            import yaml
+def _load_mandatory_columns_from_db(ws_client, warehouse_id: str) -> list[str]:
+    """Load mandatory columns by querying column_mapping_candidates where mandatory_flag = TRUE."""
+    sql = (
+        f"SELECT DISTINCT local_column_name FROM {CANDIDATES_TABLE}"
+        " WHERE mandatory_flag = TRUE ORDER BY local_column_name"
+    )
+    try:
+        resp = ws_client.statement_execution.execute_statement(
+            warehouse_id=warehouse_id, statement=sql, wait_timeout="30s"
+        )
+        if resp.status and resp.status.state == StatementState.SUCCEEDED and resp.result and resp.result.data_array:
+            return [row[0] for row in resp.result.data_array if row[0]]
+    except Exception:
+        pass
+    return []
 
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
-            return list(config.get("mandatory_source_columns", _DEFAULT_MANDATORY_COLUMNS))
-        except Exception:
-            pass
-    return list(_DEFAULT_MANDATORY_COLUMNS)
-
-
-MANDATORY_COLUMNS = _load_mandatory_columns()
 
 MATCH_TYPE_OPTIONS = ["DIRECT", "SEMANTIC_TRANSLATION", "DERIVED", "NO_MATCH"]
 
@@ -1165,6 +1151,7 @@ def page_publish_readiness():
 
 
 def main():
+    global MANDATORY_COLUMNS  # noqa: PLW0603
     st.set_page_config(
         page_title="Column Mapping Review",
         page_icon="data:image/svg+xml,"
@@ -1175,6 +1162,13 @@ def main():
     )
 
     inject_custom_css()
+
+    # Load mandatory columns from database (once per session)
+    if not MANDATORY_COLUMNS and WAREHOUSE_ID:
+        try:
+            MANDATORY_COLUMNS = _load_mandatory_columns_from_db(get_workspace_client(), WAREHOUSE_ID)
+        except Exception:
+            pass
 
     user = get_current_user()
 

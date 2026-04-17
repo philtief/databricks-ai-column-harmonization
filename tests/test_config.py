@@ -79,11 +79,13 @@ class TestGetTargetColumns:
         assert isinstance(required, bool)
         assert isinstance(group, str)
 
-    def test_column_names_match_constants(self, config):
-        from harmonization.constants import GLOBAL_TARGET_COLUMNS
-
+    def test_column_names_are_unique(self, config):
         names = get_target_column_names(config)
-        assert names == GLOBAL_TARGET_COLUMNS
+        assert len(names) == len(set(names))
+
+    def test_column_names_are_non_empty_strings(self, config):
+        for name in get_target_column_names(config):
+            assert isinstance(name, str) and len(name) > 0
 
 
 class TestGetMandatoryColumns:
@@ -91,10 +93,9 @@ class TestGetMandatoryColumns:
         cols = get_mandatory_columns(config)
         assert len(cols) == 14
 
-    def test_matches_constants(self, config):
-        from harmonization.constants import MANDATORY_COLUMNS
-
-        assert get_mandatory_columns(config) == MANDATORY_COLUMNS
+    def test_all_non_empty_strings(self, config):
+        for col in get_mandatory_columns(config):
+            assert isinstance(col, str) and len(col) > 0
 
 
 class TestGetSemanticFields:
@@ -102,10 +103,9 @@ class TestGetSemanticFields:
         fields = get_semantic_fields(config)
         assert len(fields) == 5
 
-    def test_matches_constants(self, config):
-        from harmonization.constants import SEMANTIC_FIELDS
-
-        assert get_semantic_fields(config) == SEMANTIC_FIELDS
+    def test_all_non_empty_strings(self, config):
+        for field in get_semantic_fields(config):
+            assert isinstance(field, str) and len(field) > 0
 
 
 class TestGetAiContext:

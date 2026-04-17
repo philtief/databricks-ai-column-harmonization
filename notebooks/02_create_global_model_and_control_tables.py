@@ -59,70 +59,38 @@ def execute_ddl(label, sql):
 
 # COMMAND ----------
 
-execute_ddl("property_insurance_monthly_raw", f"""
-CREATE TABLE IF NOT EXISTS {DB}.`property_insurance_monthly_raw` (
-  id_registro               BIGINT   COMMENT 'Unique record identifier',
-  anio                      INT      COMMENT 'Reporting year',
-  mes                       INT      COMMENT 'Reporting month 1-12',
-  codigo_poliza             STRING   COMMENT 'Policy code',
-  tipo_riesgo               STRING   COMMENT 'Risk type (Spanish)',
-  provincia                 STRING   COMMENT 'Province / region',
-  canal_distribucion        STRING   COMMENT 'Distribution channel (Spanish)',
-  prima_neta                DOUBLE   COMMENT 'Net written premium EUR',
-  prima_bruta               DOUBLE   COMMENT 'Gross written premium EUR',
-  num_polizas_nuevas        INT      COMMENT 'New policies count',
-  num_polizas_renovadas     INT      COMMENT 'Renewed policies count',
-  num_polizas_canceladas    INT      COMMENT 'Cancelled policies count',
-  num_siniestros_declarados INT      COMMENT 'Claims reported count',
-  num_siniestros_pagados    INT      COMMENT 'Claims paid count',
-  importe_siniestros_bruto  DOUBLE   COMMENT 'Gross claims incurred EUR',
-  importe_reservas          DOUBLE   COMMENT 'Claims reserve EUR',
-  gastos_gestion            DOUBLE   COMMENT 'Management expenses EUR',
-  comisiones                DOUBLE   COMMENT 'Commissions EUR',
-  ratio_siniestralidad      DOUBLE   COMMENT 'Loss ratio',
-  segmento_cliente          STRING   COMMENT 'Customer segment (Spanish)',
-  zona_riesgo               STRING   COMMENT 'Risk zone',
-  cobertura_principal       STRING   COMMENT 'Primary coverage (Spanish)',
-  moneda                    STRING   COMMENT 'ISO currency code',
-  fecha_carga               TIMESTAMP COMMENT 'Technical load timestamp'
-)
-USING DELTA
-COMMENT 'Raw source data with local column names. Created by the data generation or ingestion step.'
-""")
+# Raw table: NOT created here. The customer brings their own raw data.
+# For the demo, examples/spain_demo/01_generate_spain_raw_data.py creates it.
 
-execute_ddl("property_insurance_monthly", f"""
-CREATE TABLE IF NOT EXISTS {DB}.`property_insurance_monthly` (
-  record_id                   BIGINT    COMMENT 'Unique identifier for each record',
-  reporting_year              INT       COMMENT 'Calendar year of the reporting period',
-  reporting_month             INT       COMMENT 'Month number 1-12 of the reporting period',
-  policy_number               STRING    COMMENT 'Unique policy identifier',
-  risk_type                   STRING    COMMENT 'Category of insured risk',
-  region                      STRING    COMMENT 'Geographic region or province',
-  distribution_channel        STRING    COMMENT 'Channel through which policy was sold',
-  net_written_premium_eur     DOUBLE    COMMENT 'Net written premium in EUR after reinsurance',
-  gross_written_premium_eur   DOUBLE    COMMENT 'Gross written premium in EUR before reinsurance',
-  new_policies_count          INT       COMMENT 'Number of new policies in period',
-  renewed_policies_count      INT       COMMENT 'Number of policies renewed in period',
-  cancelled_policies_count    INT       COMMENT 'Number of policies cancelled in period',
-  claims_reported_count       INT       COMMENT 'Total claims notified in period',
-  claims_paid_count           INT       COMMENT 'Number of claims settled and paid',
-  gross_claims_incurred_eur   DOUBLE    COMMENT 'Total gross claims incurred in EUR',
-  claims_reserve_eur          DOUBLE    COMMENT 'Claims reserve amount at reporting date in EUR',
-  management_expenses_eur     DOUBLE    COMMENT 'Internal management expenses in EUR',
-  commissions_eur             DOUBLE    COMMENT 'Commissions paid to distribution partners in EUR',
-  loss_ratio                  DOUBLE    COMMENT 'Ratio of claims incurred to gross written premium',
-  customer_segment            STRING    COMMENT 'Segment classification of policyholder',
-  risk_zone                   STRING    COMMENT 'Risk zone classification',
-  primary_coverage            STRING    COMMENT 'Primary coverage type in the policy',
-  currency                    STRING    COMMENT 'ISO currency code for monetary amounts',
-  source_country              STRING    COMMENT 'Pipeline metadata: source country name',
-  source_system               STRING    COMMENT 'Pipeline metadata: source system identifier',
-  harmonization_timestamp     TIMESTAMP COMMENT 'Pipeline metadata: when this row was harmonized',
-  column_mapping_version      STRING    COMMENT 'Pipeline metadata: column mapping dictionary version used',
-  mapping_status              STRING    COMMENT 'Pipeline metadata: mapping status flag'
+# Harmonized table: generated dynamically from config target_model
+_cfg = load_harmonization_config()
+_target_table = _cfg["target_model"]["table_name"]
+
+_col_defs = []
+for _col in _cfg["target_model"]["columns"]:
+    _col_name = _col["name"]
+    _col_type = _col["type"]
+    _col_desc = _col["description"].replace("'", "''")
+    _col_defs.append(f"  `{_col_name}` {_col_type} COMMENT '{_col_desc}'")
+
+# Pipeline metadata columns (always appended)
+_col_defs.extend([
+    "  `source_country` STRING COMMENT 'Pipeline metadata: source country name'",
+    "  `source_system` STRING COMMENT 'Pipeline metadata: source system identifier'",
+    "  `harmonization_timestamp` TIMESTAMP COMMENT 'Pipeline metadata: when this row was harmonized'",
+    "  `column_mapping_version` STRING COMMENT 'Pipeline metadata: column mapping dictionary version used'",
+    "  `mapping_status` STRING COMMENT 'Pipeline metadata: mapping status flag'",
+])
+
+_col_defs_str = ",\n".join(_col_defs)
+_n_cols = len(_cfg["target_model"]["columns"])
+
+execute_ddl(_target_table, f"""
+CREATE TABLE IF NOT EXISTS {DB}.`{_target_table}` (
+{_col_defs_str}
 )
 USING DELTA
-COMMENT 'Harmonized property insurance monthly data — global English column names. 23 business columns + 5 pipeline metadata columns.'
+COMMENT 'Harmonized output table with global English column names. {_n_cols} business columns + 5 pipeline metadata columns.'
 """)
 
 # COMMAND ----------
@@ -441,43 +409,13 @@ from pyspark.sql.types import ArrayType, BooleanType
 
 _now = _dt.datetime.utcnow()
 
-# Load target columns from config (fallback to hardcoded defaults)
-_cfg = load_harmonization_config()
-if _cfg:
-    _target_table = _cfg["target_model"]["table_name"]
-    global_cols = [
-        (c["name"], c["type"], c["description"], c.get("examples", []), c.get("required", False), c.get("semantic_group", ""))
-        for c in _cfg["target_model"]["columns"]
-    ]
-else:
-    _target_table = "property_insurance_monthly"
-    global_cols = [
-        ("record_id", "BIGINT", "Unique identifier for each record", ["1","2","3"], True, "identity"),
-        ("reporting_year", "INT", "Calendar year of the reporting period", ["2022","2023","2024","2025"], True, "time"),
-        ("reporting_month", "INT", "Month number 1-12 of the reporting period", ["1","6","12"], True, "time"),
-        ("policy_number", "STRING", "Unique policy identifier", ["ES-1001-2022","ES-5000-2024"], True, "policy"),
-        ("risk_type", "STRING", "Category of insured risk", ["Fire","Flood","Theft","Water Damage"], True, "risk"),
-        ("region", "STRING", "Geographic region or province", ["Madrid","Barcelona","Valencia"], True, "geography"),
-        ("distribution_channel", "STRING", "Channel through which policy was sold", ["Agent","Broker","Direct","Bancassurance"], True, "distribution"),
-        ("net_written_premium_eur", "DOUBLE", "Net written premium in EUR after reinsurance", ["500.0","1200.5","3000.0"], True, "premium"),
-        ("gross_written_premium_eur", "DOUBLE", "Gross written premium in EUR before reinsurance", ["600.0","1500.0","4000.0"], True, "premium"),
-        ("new_policies_count", "INT", "Number of new policies in period", ["1","5","12"], True, "policy_count"),
-        ("renewed_policies_count", "INT", "Number of policies renewed in period", ["10","25","50"], True, "policy_count"),
-        ("cancelled_policies_count", "INT", "Number of policies cancelled in period", ["0","1","3"], True, "policy_count"),
-        ("claims_reported_count", "INT", "Total claims notified in period", ["0","1","5"], True, "claims"),
-        ("claims_paid_count", "INT", "Number of claims settled and paid", ["0","1","4"], True, "claims"),
-        ("gross_claims_incurred_eur", "DOUBLE", "Total gross claims incurred in EUR", ["200.0","800.0","2500.0"], True, "claims"),
-        ("claims_reserve_eur", "DOUBLE", "Claims reserve amount at reporting date in EUR", ["50.0","200.0","600.0"], False, "claims"),
-        ("management_expenses_eur", "DOUBLE", "Internal management expenses in EUR", ["30.0","100.0","350.0"], True, "expenses"),
-        ("commissions_eur", "DOUBLE", "Commissions paid to distribution partners in EUR", ["50.0","150.0","400.0"], True, "expenses"),
-        ("loss_ratio", "DOUBLE", "Ratio of claims incurred to gross written premium", ["0.35","0.65","1.10"], False, "kpi"),
-        ("customer_segment", "STRING", "Segment classification of policyholder", ["Individual","Small Business","Large Enterprise"], True, "customer"),
-        ("risk_zone", "STRING", "Risk zone classification", ["Zone A","Zone B","Zone C"], True, "risk"),
-        ("primary_coverage", "STRING", "Primary coverage type in the policy", ["Building","Contents","Both"], True, "coverage"),
-        ("currency", "STRING", "ISO currency code for monetary amounts", ["EUR"], True, "monetary"),
-    ]
+# Load target columns from config (reuses _cfg from the DDL section above)
+global_cols = [
+    (c["name"], c["type"], c["description"], c.get("examples", []), c.get("required", False), c.get("semantic_group", ""))
+    for c in _cfg["target_model"]["columns"]
+]
 
-print(f"Target model: {_target_table}, {len(global_cols)} columns (source: {'config' if _cfg else 'defaults'})")
+print(f"Target model: {_target_table}, {len(global_cols)} columns")
 
 gtc_schema = StructType([
     StructField("target_table",        StringType(),              False),

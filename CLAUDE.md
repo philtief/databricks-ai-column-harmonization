@@ -24,9 +24,14 @@ databricks auth login --host https://<workspace>.cloud.databricks.com
 
 Verify your CLI profile works: `databricks current-user me`
 
-### Step 2: Edit `config/harmonization_config.yaml`
+### Step 2: Create `config/harmonization_config.yaml`
 
-This is the single configuration file. Edit each section:
+Copy the template and fill in your values:
+```bash
+cp config/harmonization_config.yaml.template config/harmonization_config.yaml
+```
+
+Edit each section:
 
 **source_context** — Describe the source data for the LLM:
 ```yaml
@@ -88,14 +93,15 @@ workspace:
   profile: your-profile-name
 ```
 
-### Step 4: Replace Notebook 01 (Data Ingestion)
+### Step 4: Remove the Demo Data Task
 
-The shipped notebook 01 generates synthetic Spain data. Replace it with your own data source. Your replacement must:
+The workflow includes a demo task (`generate_demo_data`) that creates synthetic Spain data. For production use with your own data:
 
-1. Write a Delta table to `{catalog_name}.{schema_name}.{source_table}` (the `source_table` from your config)
-2. The table must have the local-language column names that the AI will map
+1. In `databricks.yml`, delete the `generate_demo_data` task
+2. Update `inventory_source_columns` to depend only on `create_global_model_and_control_tables`
+3. Ensure your raw source table already exists in `{catalog_name}.{schema_name}`
 
-If you want to test with the Spain demo data first, skip this step.
+To test with the Spain demo first, skip this step — the demo task will create sample data.
 
 ### Step 5: Deploy
 
@@ -203,9 +209,10 @@ SELECT * FROM your_catalog_name.harmonizing_agent.data_quality_results ORDER BY 
 
 - **Config-driven**: All domain customization is in `config/harmonization_config.yaml`. Do not hardcode domain-specific values in notebooks.
 - **Table names are generic**: No country suffixes. Country isolation is handled at the schema level.
-- **Notebooks 02-10 are domain-agnostic**: Only notebook 01 (data generation) is domain-specific.
+- **Config is mandatory**: Notebooks fail loudly if config YAML is missing. No silent fallbacks.
+- **All notebooks are domain-agnostic**: Demo data generation lives in `examples/spain_demo/`.
 - **Pre-commit hooks**: Black (line-length 120), flake8, mypy, pytest with 80% minimum coverage.
-- **Tests**: `pytest tests/ --cov=src --cov-report=term-missing` (74 tests, 100% coverage on src/).
+- **Tests**: `pytest tests/ --cov=src --cov-report=term-missing` (73 tests, 100% coverage on src/).
 - **Linting**: `bash scripts/lint.sh` runs black, flake8, mypy.
 
 ## Key Files
@@ -213,9 +220,11 @@ SELECT * FROM your_catalog_name.harmonizing_agent.data_quality_results ORDER BY 
 | File | Purpose |
 |------|---------|
 | `config/harmonization_config.yaml` | Single source of truth for domain configuration |
+| `config/harmonization_config.yaml.template` | Config template with placeholders for new deployments |
 | `databricks.yml` | DAB definition: workflow job + Streamlit app |
 | `notebooks/_shared_utils.py` | Shared helpers: logging, config loading, table refs |
-| `notebooks/00-10` | 11 workflow notebooks |
+| `notebooks/00, 02-10` | Workflow notebooks (all domain-agnostic) |
+| `examples/spain_demo/` | Demo data generator (Spain property insurance) |
 | `apps/column_mapping_review_app/app.py` | Streamlit review app |
-| `src/harmonization/` | Extracted Python modules (config loader, validation, data generation) |
+| `src/harmonization/` | Extracted Python modules (config loader, validation, constants) |
 | `tests/` | pytest test suite |

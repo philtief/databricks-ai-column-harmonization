@@ -37,12 +37,7 @@ _refs         = get_table_refs(_cfg, DB)
 CAND_TABLE    = _refs["cand_table"]
 OPS_TABLE     = _refs["ops_table"]
 SOURCE_SYSTEM = _refs["source_system"]
-MANDATORY_COLUMNS = _cfg["mandatory_source_columns"] if _cfg else [
-    "id_registro", "anio", "mes", "codigo_poliza", "tipo_riesgo",
-    "provincia", "canal_distribucion", "prima_neta", "prima_bruta",
-    "num_siniestros_declarados", "num_siniestros_pagados",
-    "segmento_cliente", "cobertura_principal", "moneda",
-]
+MANDATORY_COLUMNS = _cfg["mandatory_source_columns"]
 
 print(f"Config: {DB}")
 

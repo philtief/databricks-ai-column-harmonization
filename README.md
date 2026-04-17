@@ -1,13 +1,13 @@
 # Column Mapping to Global Model
 
-An 11-step Databricks workflow that uses AI to map source-specific column names to a standardized global English data model. Includes a Streamlit review app for human-in-the-loop approval before mappings are applied.
+AI-powered column harmonization from local source schemas to a standardized global English data model. A Databricks workflow uses an LLM to propose column mappings, then a Streamlit review app lets humans approve, correct, or reject each mapping before the harmonized output is created.
 
-Ships with a Spain property insurance example. Adapt it to your own domain by editing `config/harmonization_config.yaml`.
+Bring your own local dataset and target data model. The framework handles the mapping, review, and transformation.
 
 ## Architecture
 
 ```
-Raw Source Data (local columns)
+Raw Source Data (local columns, any language)
         |
         v
 +-----------------------------+
@@ -37,6 +37,7 @@ Raw Source Data (local columns)
 - SQL Warehouse (Serverless recommended)
 - Databricks CLI configured (`databricks auth login`)
 - A catalog you have `CREATE SCHEMA` permissions on
+- Your raw source table already loaded into Databricks
 
 ## Quick Start
 
@@ -45,30 +46,34 @@ Raw Source Data (local columns)
 git clone https://github.com/philtief/databricks-column-harmonization.git
 cd databricks-column-harmonization
 
-# 2. Edit config/harmonization_config.yaml
-#    - Set your source context (domain, language, source system)
-#    - Define your target data model (column names, types, descriptions)
-#    - List mandatory source columns and semantic fields
+# 2. Create your config from the template
+cp config/harmonization_config.yaml.template config/harmonization_config.yaml
 
-# 3. Configure databricks.yml
+# 3. Edit config/harmonization_config.yaml
+#    - Set source_context: domain, source_system, source_table
+#    - Define target_model: your global column names, types, descriptions
+#    - List mandatory_source_columns and semantic_fields
+
+# 4. Edit databricks.yml
 #    - Set the catalog_name default parameter
-#    - Ensure your Databricks CLI profile is configured
+#    - Remove the generate_demo_data task (it's for the demo only)
+#    - Update inventory_source_columns to depend only on create_global_model_and_control_tables
 
-# 4. Deploy and run
+# 5. Deploy and run
 databricks bundle deploy
 databricks bundle run Column_Mapping_To_Global_Model
 ```
 
 ## Configuration: `config/harmonization_config.yaml`
 
-This is the main file you edit to adapt the solution to your domain. It controls:
+This is the main file you edit to adapt the solution to your domain. See `config/harmonization_config.yaml.template` for the format.
 
 | Section | What it does |
 |---------|-------------|
 | `source_context` | Domain description fed to the LLM when proposing mappings. Be specific about the source language, business domain, and naming conventions. |
 | `target_model.columns` | The global English column definitions (name, type, description, examples). Each column's `description` is read by the LLM to find the best match. |
 | `mandatory_source_columns` | Source columns that must be reviewed and approved before the workflow proceeds past the review gate. |
-| `semantic_fields` | Target fields eligible for optional value mapping (e.g., translating category values from Spanish to English). |
+| `semantic_fields` | Target fields eligible for optional value mapping (e.g., translating category values from German to English). |
 | `ai` | LLM endpoint and token cost estimates for monitoring. |
 
 ## Workflow Steps
@@ -76,8 +81,8 @@ This is the main file you edit to adapt the solution to your domain. It controls
 | Step | Notebook | Purpose |
 |------|----------|---------|
 | 00 | `bootstrap_catalog` | Create catalog and schemas if they don't exist |
-| 01 | `generate_spain_raw_data` | Generate synthetic Spain property insurance data |
-| 02 | `create_global_model_and_control_tables` | Define global target model (from config) and all control tables |
+| 01 | `generate_demo_data` | *(Demo only)* Generate synthetic Spain data. Remove this task for production. |
+| 02 | `create_global_model_and_control_tables` | Create harmonized table (from config), control tables, and views |
 | 03 | `inventory_source_columns` | Catalog all source columns with metadata and sample values |
 | 04 | `ai_propose_column_mappings` | AI proposes column mappings with confidence scores and match types |
 | 05 | `prepare_app_review_views` | Create views for the Streamlit review app |
@@ -93,6 +98,7 @@ The Streamlit app (`apps/column_mapping_review_app/`) is deployed as a Databrick
 
 - See AI-proposed mappings with confidence scores (HIGH / MEDIUM / LOW)
 - Approve, reject, or override each mapping
+- Move approved mappings back to pending if needed
 - Track progress toward mandatory column coverage
 - Signal completion to unblock the workflow gate
 
@@ -102,35 +108,37 @@ Set these environment variables in `app.yaml` after deployment:
 - `DATABRICKS_WAREHOUSE_ID` -- SQL Warehouse ID
 - `WORKFLOW_JOB_ID` -- Job ID (set after deploying the workflow)
 
-## Adapting for Another Country / Domain
-
-1. Edit `config/harmonization_config.yaml`:
-   - Update `source_context` with your domain description
-   - Define your target columns in `target_model.columns` with LLM-friendly descriptions
-   - Set your `mandatory_source_columns`
-2. Replace notebook `01` with your own data source (or point to an existing table)
-3. Run `databricks bundle deploy && databricks bundle run Column_Mapping_To_Global_Model`
-4. Review and approve mappings via the Streamlit app
-5. Notebooks `07`-`10` apply the approved mappings automatically
-
 ## Project Structure
 
 ```
 ├── databricks.yml                  # Databricks Asset Bundle definition (jobs + app)
 ├── config/
-│   └── harmonization_config.yaml   # Domain config: target model, AI context, mandatory columns
-├── notebooks/                      # 11 workflow notebooks (00-10) + shared utils
+│   ├── harmonization_config.yaml   # Your domain config (copy from template)
+│   └── harmonization_config.yaml.template  # Config template with placeholders
+├── notebooks/                      # Workflow notebooks (00, 02-10) + shared utils
+├── examples/
+│   └── spain_demo/                 # Demo: Spain property insurance data generator
 ├── apps/column_mapping_review_app/ # Streamlit review app (deployed as Databricks App)
-├── sql/review_queries.sql          # SQL queries for review views
 ├── src/harmonization/              # Extracted Python modules (testable)
 │   ├── config.py                   # Config loader
-│   ├── constants.py                # Shared constants (defaults)
-│   ├── data_generation.py          # Synthetic data generation logic
+│   ├── constants.py                # Framework constants
+│   ├── data_generation.py          # Demo data generation logic
 │   └── validation.py               # Quality check functions
-├── tests/                          # pytest test suite (79 tests, 100% coverage on src/)
+├── tests/                          # pytest test suite (73 tests, 100% coverage on src/)
 ├── scripts/                        # Lint and test wrapper scripts
 └── pyproject.toml                  # Python project configuration
 ```
+
+## Running the Demo
+
+A Spain property insurance demo is included in `examples/spain_demo/`. To try it:
+
+1. Use the shipped `config/harmonization_config.yaml` as-is (it contains the Spain config)
+2. Set the `catalog_name` in `databricks.yml` to your catalog
+3. Deploy and run — the `generate_demo_data` task creates 10k synthetic rows
+4. Review mappings in the Streamlit app, then re-run the workflow to complete
+
+See `examples/spain_demo/README.md` for details.
 
 ## Development
 

@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # 10 — Validate and Monitor
 # MAGIC
-# MAGIC Runs data quality checks on the harmonized `property_insurance_monthly` table,
+# MAGIC Runs data quality checks on the harmonized output table,
 # MAGIC produces a monitoring summary, and raises an exception if critical checks fail.
 # MAGIC
 # MAGIC **Data Quality Checks:**
@@ -45,12 +45,7 @@ DQ_TABLE     = _refs["dq_table"]
 USAGE_TABLE  = _refs["usage_table"]
 OPS_TABLE    = _refs["ops_table"]
 SOURCE_SYSTEM = _refs["source_system"]
-MANDATORY_COLUMNS = _cfg["mandatory_source_columns"] if _cfg else [
-    "id_registro", "anio", "mes", "codigo_poliza", "tipo_riesgo",
-    "provincia", "canal_distribucion", "prima_neta", "prima_bruta",
-    "num_siniestros_declarados", "num_siniestros_pagados",
-    "segmento_cliente", "cobertura_principal", "moneda",
-]
+MANDATORY_COLUMNS = _cfg["mandatory_source_columns"]
 
 print(f"Config: {DB}")
 

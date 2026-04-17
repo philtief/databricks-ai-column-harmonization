@@ -21,6 +21,7 @@ dev = [
     "black>=24.0",
     "flake8>=7.0",
     "mypy>=1.8",
+    "types-PyYAML>=6.0",
 ]
 app = [
     "streamlit>=1.37.0",

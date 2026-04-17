@@ -63,6 +63,19 @@ class TestLoadConfig:
         with pytest.raises(ValueError, match="missing keys"):
             load_config(str(bad_config))
 
+    def test_raises_on_invalid_column_name(self, tmp_path):
+        bad_config = tmp_path / "bad.yaml"
+        data = {
+            "source_context": {},
+            "target_model": {"columns": [{"name": "bad-name", "type": "STRING", "description": "test"}]},
+            "mandatory_source_columns": [],
+            "semantic_fields": [],
+            "ai": {},
+        }
+        bad_config.write_text(yaml.dump(data))
+        with pytest.raises(ValueError, match="invalid name"):
+            load_config(str(bad_config))
+
 
 class TestGetTargetColumns:
     def test_returns_23_columns(self, config):

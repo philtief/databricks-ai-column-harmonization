@@ -36,6 +36,17 @@ target_model:
   table_name: "<your harmonized table name, e.g. motor_insurance_quarterly>"
 
   columns:
+    # Each column needs: name, type, description.
+    # Optional: examples (helps the LLM), required (gates the review), semantic_group (for grouping).
+    #
+    # Example column block:
+    # - name: policy_id
+    #   type: STRING
+    #   description: "Unique policy identifier assigned at underwriting"
+    #   examples: ["DE-001-2024", "DE-002-2024"]
+    #   required: true               # Must be mapped before workflow proceeds
+    #   semantic_group: policy        # Logical grouping (shown in app + used by coverage view)
+
     - name: "<column_name>"
       type: "<SQL type: STRING, INT, BIGINT, DOUBLE, TIMESTAMP, etc.>"
       description: "<Business definition — the LLM reads this to find the best match>"
@@ -43,14 +54,7 @@ target_model:
       required: true
       semantic_group: "<grouping label, e.g. policy, claims, premium>"
 
-    # Add more columns here. Typically 15-30 columns for a reporting table.
-    # Example:
-    # - name: policy_id
-    #   type: STRING
-    #   description: "Unique policy identifier"
-    #   examples: ["DE-001-2024", "DE-002-2024"]
-    #   required: true
-    #   semantic_group: policy
+    # Add 15-30 columns. The more precise the description, the better the AI mapping.
 
 
 # --- Mandatory source columns ------------------------------------------------

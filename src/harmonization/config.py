@@ -1,6 +1,7 @@
 """Load and validate the harmonization configuration YAML."""
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ import yaml
 
 _REQUIRED_KEYS = {"source_context", "target_model", "mandatory_source_columns", "semantic_fields", "ai"}
 _REQUIRED_COLUMN_KEYS = {"name", "type", "description"}
+_VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 # Default config path: config/harmonization_config.yaml relative to repo root
 _DEFAULT_CONFIG_PATH = os.path.join(Path(__file__).resolve().parents[2], "config", "harmonization_config.yaml")
@@ -42,6 +44,9 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         col_missing = _REQUIRED_COLUMN_KEYS - set(col.keys())
         if col_missing:
             raise ValueError(f"Column {i} ({col.get('name', '?')}) missing keys: {sorted(col_missing)}")
+        col_name = col["name"]
+        if not _VALID_IDENTIFIER.match(col_name):
+            raise ValueError(f"Column {i} has invalid name '{col_name}'. Use only letters, digits, and underscores.")
 
     result: dict[str, Any] = config
     return result

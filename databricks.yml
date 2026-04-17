@@ -47,8 +47,15 @@ resources:
         - name: mapping_version
           default: v1
 
+      # Task keys → notebook mapping:
+      #   bootstrap_catalog (00), generate_demo_data (01, demo only),
+      #   create_global_model_and_control_tables (02), inventory_source_columns (03),
+      #   ai_propose_column_mappings (04), prepare_app_review_views (05),
+      #   column_mapping_review_gate (06), build_column_mapping_dictionary (07),
+      #   apply_approved_column_mappings (08), optional_value_mapping (09),
+      #   validate_and_monitor (10)
       tasks:
-        # -- Task 1: Bootstrap catalog and schema
+        # -- Task 00: Bootstrap catalog and schema
         - task_key: bootstrap_catalog
           notebook_task:
             notebook_path: ./notebooks/00_bootstrap_catalog.py

@@ -205,6 +205,29 @@ Check data quality results:
 SELECT * FROM your_catalog_name.harmonizing_agent.data_quality_results ORDER BY recorded_at DESC;
 ```
 
+## Troubleshooting
+
+**"FATAL: Could not load harmonization config"**
+Config file is missing or has a syntax error. Verify `config/harmonization_config.yaml` exists and is valid YAML. Run `python -c "import yaml; yaml.safe_load(open('config/harmonization_config.yaml'))"` locally to check syntax.
+
+**App shows "DATABRICKS_WAREHOUSE_ID environment variable is not set"**
+Edit `apps/column_mapping_review_app/app.yaml` and set all env vars. Redeploy with `databricks bundle deploy`.
+
+**App shows "No data available yet" on all pages**
+The workflow hasn't run yet (or hasn't reached notebook 04). Run the workflow first: `databricks bundle run Column_Mapping_To_Global_Model`.
+
+**Review gate (task 06) fails with "mandatory columns still PENDING"**
+Open the Streamlit review app and approve or correct all mandatory columns. Then re-run the workflow.
+
+**App Service Principal gets "access denied"**
+Grant permissions to the SP (see Step 7 above). Also grant CAN_USE on the SQL Warehouse via the warehouse permissions UI (Settings > SQL Warehouses > your warehouse > Permissions).
+
+**ai_query returns AI_ERROR for some columns**
+The LLM couldn't map the column. Check the `mapping_rationale` and `ai_error_status` fields in `column_mapping_candidates`. Common causes: ambiguous column names, missing context in config description, or LLM endpoint not available.
+
+**Databricks Runtime compatibility**
+Requires Databricks Runtime 13.0+ (Python 3.10+). Serverless notebooks are supported.
+
 ## Project Conventions
 
 - **Config-driven**: All domain customization is in `config/harmonization_config.yaml`. Do not hardcode domain-specific values in notebooks.

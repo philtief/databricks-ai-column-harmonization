@@ -33,11 +33,12 @@ Raw Source Data (local columns, any language)
 
 ## Prerequisites
 
-- Databricks workspace with Unity Catalog enabled
+- Databricks workspace with Unity Catalog enabled (Runtime 13.0+)
 - SQL Warehouse (Serverless recommended)
 - Databricks CLI configured (`databricks auth login`)
 - A catalog you have `CREATE SCHEMA` permissions on
 - Your raw source table already loaded into Databricks
+- Python 3.10+ (only needed for local linting and tests, not for deployment)
 
 ## Quick Start
 

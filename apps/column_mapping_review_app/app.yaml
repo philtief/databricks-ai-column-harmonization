@@ -17,8 +17,8 @@ env:
   - name: CATALOG_NAME
     value: ""  # Set to your Unity Catalog catalog name
   - name: SCHEMA_NAME
-    value: harmonizing_agent
+    value: ""  # Set to match schema_name in databricks.yml (default: harmonizing_agent)
   - name: DATABRICKS_WAREHOUSE_ID
-    value: ""  # Set to your SQL Warehouse ID
+    value: ""  # databricks warehouses list --output json | jq '.[0].id'
   - name: WORKFLOW_JOB_ID
-    value: ""  # Set after deploying the workflow job
+    value: ""  # databricks jobs list --name Column_Mapping_To_Global_Model --output json | jq '.[0].job_id'

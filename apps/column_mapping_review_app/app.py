@@ -456,6 +456,24 @@ def _approve_mapping(local_column_name: str, user: str, comment: str = "") -> bo
     usr = _esc(user)
     cmt = _esc(comment)
 
+    audit_sql = f"""
+    INSERT INTO {AUDIT_TABLE}
+        (audit_id, local_column_name, old_review_status, new_review_status,
+         old_global_column_name, new_global_column_name,
+         old_match_type, new_match_type,
+         action_by, action_at, action_comment, action_source)
+    SELECT
+        bigint(unix_micros(current_timestamp())),
+        local_column_name, review_status, 'APPROVED',
+        final_global_column_name, proposed_global_column_name,
+        final_match_type, proposed_match_type,
+        '{usr}', current_timestamp(), '{cmt}', 'DATABRICKS_APP'
+    FROM {CANDIDATES_TABLE}
+    WHERE local_column_name = '{col}' AND review_status = 'PENDING'
+    """
+    if execute_dml(audit_sql) == -1:
+        return False
+
     update_sql = f"""
     UPDATE {CANDIDATES_TABLE}
     SET
@@ -470,18 +488,7 @@ def _approve_mapping(local_column_name: str, user: str, comment: str = "") -> bo
     WHERE local_column_name = '{col}'
       AND review_status = 'PENDING'
     """
-    rows = execute_dml(update_sql)
-    if rows == -1:
-        return False
-
-    audit_sql = f"""
-    INSERT INTO {AUDIT_TABLE}
-        (local_column_name, action, new_status, changed_by, changed_at, comment)
-    VALUES
-        ('{col}', 'APPROVE', 'APPROVED', '{usr}', current_timestamp(), '{cmt}')
-    """
-    execute_dml(audit_sql)
-    return True
+    return execute_dml(update_sql) != -1
 
 
 def _reject_mapping(local_column_name: str, user: str, comment: str) -> bool:
@@ -489,6 +496,24 @@ def _reject_mapping(local_column_name: str, user: str, comment: str) -> bool:
     col = _esc(local_column_name)
     usr = _esc(user)
     cmt = _esc(comment)
+
+    audit_sql = f"""
+    INSERT INTO {AUDIT_TABLE}
+        (audit_id, local_column_name, old_review_status, new_review_status,
+         old_global_column_name, new_global_column_name,
+         old_match_type, new_match_type,
+         action_by, action_at, action_comment, action_source)
+    SELECT
+        bigint(unix_micros(current_timestamp())),
+        local_column_name, review_status, 'REJECTED',
+        final_global_column_name, final_global_column_name,
+        final_match_type, 'NO_MATCH',
+        '{usr}', current_timestamp(), '{cmt}', 'DATABRICKS_APP'
+    FROM {CANDIDATES_TABLE}
+    WHERE local_column_name = '{col}' AND review_status = 'PENDING'
+    """
+    if execute_dml(audit_sql) == -1:
+        return False
 
     update_sql = f"""
     UPDATE {CANDIDATES_TABLE}
@@ -503,18 +528,7 @@ def _reject_mapping(local_column_name: str, user: str, comment: str) -> bool:
     WHERE local_column_name = '{col}'
       AND review_status = 'PENDING'
     """
-    rows = execute_dml(update_sql)
-    if rows == -1:
-        return False
-
-    audit_sql = f"""
-    INSERT INTO {AUDIT_TABLE}
-        (local_column_name, action, new_status, changed_by, changed_at, comment)
-    VALUES
-        ('{col}', 'REJECT', 'REJECTED', '{usr}', current_timestamp(), '{cmt}')
-    """
-    execute_dml(audit_sql)
-    return True
+    return execute_dml(update_sql) != -1
 
 
 def _correct_mapping(
@@ -531,6 +545,24 @@ def _correct_mapping(
     usr = _esc(user)
     cmt = _esc(comment)
 
+    audit_sql = f"""
+    INSERT INTO {AUDIT_TABLE}
+        (audit_id, local_column_name, old_review_status, new_review_status,
+         old_global_column_name, new_global_column_name,
+         old_match_type, new_match_type,
+         action_by, action_at, action_comment, action_source)
+    SELECT
+        bigint(unix_micros(current_timestamp())),
+        local_column_name, review_status, 'CORRECTED',
+        final_global_column_name, '{new_col}',
+        final_match_type, '{new_mt}',
+        '{usr}', current_timestamp(), '{cmt}', 'DATABRICKS_APP'
+    FROM {CANDIDATES_TABLE}
+    WHERE local_column_name = '{col}'
+    """
+    if execute_dml(audit_sql) == -1:
+        return False
+
     update_sql = f"""
     UPDATE {CANDIDATES_TABLE}
     SET
@@ -544,18 +576,7 @@ def _correct_mapping(
         updated_at               = current_timestamp()
     WHERE local_column_name = '{col}'
     """
-    rows = execute_dml(update_sql)
-    if rows == -1:
-        return False
-
-    audit_sql = f"""
-    INSERT INTO {AUDIT_TABLE}
-        (local_column_name, action, new_status, changed_by, changed_at, comment)
-    VALUES
-        ('{col}', 'CORRECT', 'CORRECTED', '{usr}', current_timestamp(), '{cmt}')
-    """
-    execute_dml(audit_sql)
-    return True
+    return execute_dml(update_sql) != -1
 
 
 def _reset_to_pending(local_column_name: str, user: str, from_status: str = "REJECTED") -> bool:
@@ -563,6 +584,24 @@ def _reset_to_pending(local_column_name: str, user: str, from_status: str = "REJ
     col = _esc(local_column_name)
     usr = _esc(user)
     fs = _esc(from_status)
+
+    audit_sql = f"""
+    INSERT INTO {AUDIT_TABLE}
+        (audit_id, local_column_name, old_review_status, new_review_status,
+         old_global_column_name, new_global_column_name,
+         old_match_type, new_match_type,
+         action_by, action_at, action_comment, action_source)
+    SELECT
+        bigint(unix_micros(current_timestamp())),
+        local_column_name, review_status, 'PENDING',
+        final_global_column_name, NULL,
+        final_match_type, NULL,
+        '{usr}', current_timestamp(), 'Reset to pending for re-review', 'DATABRICKS_APP'
+    FROM {CANDIDATES_TABLE}
+    WHERE local_column_name = '{col}' AND review_status = '{fs}'
+    """
+    if execute_dml(audit_sql) == -1:
+        return False
 
     update_sql = f"""
     UPDATE {CANDIDATES_TABLE}
@@ -578,18 +617,7 @@ def _reset_to_pending(local_column_name: str, user: str, from_status: str = "REJ
     WHERE local_column_name = '{col}'
       AND review_status = '{fs}'
     """
-    rows = execute_dml(update_sql)
-    if rows == -1:
-        return False
-
-    audit_sql = f"""
-    INSERT INTO {AUDIT_TABLE}
-        (local_column_name, action, new_status, changed_by, changed_at, comment)
-    VALUES
-        ('{col}', 'RECONSIDER', 'PENDING', '{usr}', current_timestamp(), 'Reset to pending for re-review')
-    """
-    execute_dml(audit_sql)
-    return True
+    return execute_dml(update_sql) != -1
 
 
 # ---------------------------------------------------------------------------
@@ -1091,7 +1119,7 @@ def page_publish_readiness():
     st.divider()
 
     # --- Non-mandatory summary ---
-    st.subheader("Non-Mandatory Columns Summary")
+    st.subheader("Non-Mandatory Columns")
     non_mandatory_df = df_all[~df_all["local_column_name"].isin(MANDATORY_COLUMNS)]
     total_nm = len(non_mandatory_df)
     if total_nm > 0:
@@ -1100,9 +1128,21 @@ def page_publish_readiness():
         nm_pending = int(nm_counts.get("PENDING", 0))
         nm_rejected = int(nm_counts.get("REJECTED", 0))
         nm_col1, nm_col2, nm_col3 = st.columns(3)
-        nm_col1.metric("Non-Mandatory Resolved", nm_approved)
-        nm_col2.metric("Non-Mandatory Pending", nm_pending)
-        nm_col3.metric("Non-Mandatory Rejected", nm_rejected)
+        nm_col1.metric("Resolved", nm_approved)
+        nm_col2.metric("Pending", nm_pending)
+        nm_col3.metric("Rejected", nm_rejected)
+
+        status_order = {"PENDING": 0, "REJECTED": 1, "APPROVED": 2, "CORRECTED": 2}
+        nm_sorted = non_mandatory_df.sort_values(
+            by=["review_status", "local_column_name"],
+            key=lambda s: s.map(status_order) if s.name == "review_status" else s,
+        )
+        for _, row in nm_sorted.iterrows():
+            status = row["review_status"]
+            col_name = row["local_column_name"]
+            target = row.get("final_global_column_name") or row.get("proposed_global_column_name") or "—"
+            label = f"{status_indicator(status)} &nbsp; `{col_name}` &nbsp;→&nbsp; `{target}`"
+            st.markdown(label, unsafe_allow_html=True)
     else:
         st.info("No non-mandatory columns found.")
 

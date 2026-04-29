@@ -248,9 +248,12 @@ ORDER BY d.local_column_name
 """)
 )
 
-# Harmonized output stats — generic counts across all required target columns
+# Harmonized output stats — generic counts across required target columns
+# Only reference columns that actually exist in the harmonized table; missing
+# required columns are already flagged as FAILED by the not-null DQ check above.
+_existing_required = [c for c in REQUIRED_TARGET_COLUMNS if c in harm_columns]
 _required_cols_sql = (
-    ",\n  ".join(f"COUNT(DISTINCT `{c}`) AS distinct_{c}" for c in REQUIRED_TARGET_COLUMNS) or "1 AS placeholder"
+    ",\n  ".join(f"COUNT(DISTINCT `{c}`) AS distinct_{c}" for c in _existing_required) or "1 AS placeholder"
 )
 
 display(

@@ -1,11 +1,8 @@
 bundle:
   name: column-mapping-to-global-model
 
-# Configure your workspace connection:
-#   Option A: set DATABRICKS_HOST and DATABRICKS_TOKEN environment variables
-#   Option B: configure a profile in ~/.databrickscfg and uncomment below
-# workspace:
-#   profile: my-profile
+workspace:
+  profile: fe-vm-agent-marketplace
 
 targets:
   dev:
@@ -37,11 +34,11 @@ resources:
 
       parameters:
         - name: catalog_name
-          default: my_catalog
+          default: agent_marketplace_catalog
         - name: schema_name
-          default: harmonizing_agent
+          default: column_harmonization_test
         - name: source_country
-          default: ""  # Set to your source country name
+          default: "Spain"
         - name: ai_endpoint
           default: databricks-gpt-5-2
         - name: mapping_version

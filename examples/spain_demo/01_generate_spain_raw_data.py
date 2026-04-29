@@ -15,7 +15,7 @@
 
 # COMMAND ----------
 
-# MAGIC %run ./_shared_utils
+# MAGIC %run ../../notebooks/_shared_utils
 
 # COMMAND ----------
 

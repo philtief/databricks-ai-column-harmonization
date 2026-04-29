@@ -75,6 +75,25 @@ def load_harmonization_config():
 
 # COMMAND ----------
 
+# When deployed via DAB the bundle uploads src/harmonization/ under files/src.
+# Walk up from the current notebook until we find a sibling `src/harmonization`
+# directory. Works whether the notebook lives in notebooks/ (one level) or
+# examples/<demo>/ (two levels).
+import os as _os
+import sys as _sys
+
+_notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_current = "/Workspace" + _notebook_path
+for _ in range(6):
+    _current = _os.path.dirname(_current)
+    _candidate = _os.path.join(_current, "src")
+    if _os.path.isdir(_os.path.join(_candidate, "harmonization")):
+        if _candidate not in _sys.path:
+            _sys.path.insert(0, _candidate)
+        break
+else:
+    raise RuntimeError(f"Could not locate src/harmonization above {_notebook_path}")
+
 # Delegated to harmonization.tables so the logic is unit-testable outside
 # the notebook runtime. Importing into this %run-injected module exposes
 # get_table_refs to every workflow notebook unchanged.

@@ -1,36 +1,32 @@
 # ==========================================================================
-# Column Harmonization Configuration — Generic Starter
+# Column Harmonization Configuration
 # ==========================================================================
-# This file defines the source domain, target data model, and AI settings
-# for the column harmonization workflow. Edit it to fit your own raw data
-# and target schema.
+# This file defines the domain, target data model, and AI settings for
+# the column harmonization workflow. Edit it to adapt the solution to
+# your own source data and target schema.
 #
-# Quick start:
-#   - To try the Spain property-insurance demo, copy the demo config:
-#       cp examples/spain_demo/harmonization_config.yaml config/harmonization_config.yaml
-#   - To start fresh, copy the placeholder template:
-#       cp config/harmonization_config.yaml.template config/harmonization_config.yaml
-#
-# After editing:
-#   databricks bundle deploy && databricks bundle run Column_Mapping_To_Global_Model
+# After editing:  databricks bundle deploy && databricks bundle run Column_Mapping_To_Global_Model
 # ==========================================================================
 
 # --- Source context (fed to the LLM when proposing column mappings) --------
 source_context:
-  # Short label shown in logs and prompts.
-  domain: "Generic CRM contact records"
+  # Short domain label shown in logs and prompts
+  domain: "Spain property insurance monthly reporting"
 
-  # Identifier stored in control tables to distinguish this source.
-  source_system: "GENERIC_CRM_RAW"
+  # Identifier stored in control tables to distinguish this source
+  source_system: "ES_PROPERTY_RAW"
 
-  # Raw table name. Must already exist in your <catalog>.<schema>.
-  source_table: "crm_contacts_raw"
+  # Raw table name (created by notebook 01)
+  source_table: "property_insurance_monthly_raw"
 
-  # Description passed to the LLM. Be specific: language, domain, conventions.
+  # Full description passed to the LLM. Be specific: the more context the
+  # model has, the better the mapping quality. Mention the language of
+  # source columns, the business domain, and any naming conventions.
   description: >
-    Customer contact records from a generic CRM source. Source columns may use
-    a mix of business shorthand and abbreviations. Target model uses standard
-    English names suitable for downstream analytics.
+    Monthly reporting data from Spain property insurance operations.
+    Source columns are in Spanish (e.g. prima_bruta = gross premium,
+    num_siniestros_declarados = claims reported). The target model uses
+    standardised English column names. Source system: ES_PROPERTY_RAW.
 
 
 # --- Target data model (the "ground truth" the LLM maps into) -------------
@@ -38,121 +34,253 @@ source_context:
 # The 'description' field is especially important: it helps the LLM
 # distinguish between similarly named columns. Write it for an LLM reader.
 target_model:
-  table_name: "crm_contacts"
+  table_name: "property_insurance_monthly"
 
   columns:
-    - name: contact_id
-      type: STRING
-      description: "Unique identifier for each contact"
-      examples: ["C-001", "C-002", "C-003"]
+    # -- Identity --
+    - name: record_id
+      type: BIGINT
+      description: "Unique identifier for each record"
+      examples: ["1", "2", "3"]
       required: true
       semantic_group: identity
 
-    - name: first_name
-      type: STRING
-      description: "Given (first) name of the contact"
-      examples: ["Alice", "Bob"]
-      required: true
-      semantic_group: person
-
-    - name: last_name
-      type: STRING
-      description: "Family (last) name of the contact"
-      examples: ["Smith", "Jones"]
-      required: true
-      semantic_group: person
-
-    - name: email
-      type: STRING
-      description: "Primary email address"
-      examples: ["a@example.com"]
-      required: true
-      semantic_group: contact
-
-    - name: phone_number
-      type: STRING
-      description: "Primary phone number in E.164 format"
-      examples: ["+1-555-0100"]
-      required: false
-      semantic_group: contact
-
-    - name: country
-      type: STRING
-      description: "ISO 3166 country name where the contact is located"
-      examples: ["United States", "Germany"]
-      required: true
-      semantic_group: geography
-
-    - name: created_at
-      type: TIMESTAMP
-      description: "Timestamp when the contact record was first created"
-      examples: ["2024-01-15T10:00:00"]
+    # -- Time --
+    - name: reporting_year
+      type: INT
+      description: "Calendar year of the reporting period"
+      examples: ["2022", "2023", "2024", "2025"]
       required: true
       semantic_group: time
 
-    - name: lifecycle_stage
-      type: STRING
-      description: "Sales/marketing lifecycle stage"
-      examples: ["lead", "prospect", "customer"]
+    - name: reporting_month
+      type: INT
+      description: "Month number 1-12 of the reporting period"
+      examples: ["1", "6", "12"]
       required: true
-      semantic_group: lifecycle
+      semantic_group: time
+
+    # -- Policy --
+    - name: policy_number
+      type: STRING
+      description: "Unique policy identifier"
+      examples: ["ES-1001-2022", "ES-5000-2024"]
+      required: true
+      semantic_group: policy
+
+    # -- Risk --
+    - name: risk_type
+      type: STRING
+      description: "Category of insured risk"
+      examples: ["Fire", "Flood", "Theft", "Water Damage"]
+      required: true
+      semantic_group: risk
+
+    # -- Geography --
+    - name: region
+      type: STRING
+      description: "Geographic region or province"
+      examples: ["Madrid", "Barcelona", "Valencia"]
+      required: true
+      semantic_group: geography
+
+    # -- Distribution --
+    - name: distribution_channel
+      type: STRING
+      description: "Channel through which policy was sold"
+      examples: ["Agent", "Broker", "Direct", "Bancassurance"]
+      required: true
+      semantic_group: distribution
+
+    # -- Premium --
+    - name: net_written_premium_eur
+      type: DOUBLE
+      description: "Net written premium in EUR after reinsurance"
+      examples: ["500.0", "1200.5", "3000.0"]
+      required: true
+      semantic_group: premium
+
+    - name: gross_written_premium_eur
+      type: DOUBLE
+      description: "Gross written premium in EUR before reinsurance"
+      examples: ["600.0", "1500.0", "4000.0"]
+      required: true
+      semantic_group: premium
+
+    # -- Policy counts --
+    - name: new_policies_count
+      type: INT
+      description: "Number of new policies in period"
+      examples: ["1", "5", "12"]
+      required: true
+      semantic_group: policy_count
+
+    - name: renewed_policies_count
+      type: INT
+      description: "Number of policies renewed in period"
+      examples: ["10", "25", "50"]
+      required: true
+      semantic_group: policy_count
+
+    - name: cancelled_policies_count
+      type: INT
+      description: "Number of policies cancelled in period"
+      examples: ["0", "1", "3"]
+      required: true
+      semantic_group: policy_count
+
+    # -- Claims --
+    - name: claims_reported_count
+      type: INT
+      description: "Total claims notified in period"
+      examples: ["0", "1", "5"]
+      required: true
+      semantic_group: claims
+
+    - name: claims_paid_count
+      type: INT
+      description: "Number of claims settled and paid"
+      examples: ["0", "1", "4"]
+      required: true
+      semantic_group: claims
+
+    - name: gross_claims_incurred_eur
+      type: DOUBLE
+      description: "Total gross claims incurred in EUR"
+      examples: ["200.0", "800.0", "2500.0"]
+      required: true
+      semantic_group: claims
+
+    - name: claims_reserve_eur
+      type: DOUBLE
+      description: "Claims reserve amount at reporting date in EUR"
+      examples: ["50.0", "200.0", "600.0"]
+      required: false
+      semantic_group: claims
+
+    # -- Expenses --
+    - name: management_expenses_eur
+      type: DOUBLE
+      description: "Internal management expenses in EUR"
+      examples: ["30.0", "100.0", "350.0"]
+      required: true
+      semantic_group: expenses
+
+    - name: commissions_eur
+      type: DOUBLE
+      description: "Commissions paid to distribution partners in EUR"
+      examples: ["50.0", "150.0", "400.0"]
+      required: true
+      semantic_group: expenses
+
+    # -- KPI --
+    - name: loss_ratio
+      type: DOUBLE
+      description: "Ratio of claims incurred to gross written premium"
+      examples: ["0.35", "0.65", "1.10"]
+      required: false
+      semantic_group: kpi
+
+    # -- Customer --
+    - name: customer_segment
+      type: STRING
+      description: "Segment classification of policyholder"
+      examples: ["Individual", "Small Business", "Large Enterprise"]
+      required: true
+      semantic_group: customer
+
+    # -- Risk zone --
+    - name: risk_zone
+      type: STRING
+      description: "Risk zone classification"
+      examples: ["Zone A", "Zone B", "Zone C"]
+      required: true
+      semantic_group: risk
+
+    # -- Coverage --
+    - name: primary_coverage
+      type: STRING
+      description: "Primary coverage type in the policy"
+      examples: ["Building", "Contents", "Both"]
+      required: true
+      semantic_group: coverage
+
+    # -- Monetary --
+    - name: currency
+      type: STRING
+      description: "ISO currency code for monetary amounts"
+      examples: ["EUR"]
+      required: true
+      semantic_group: monetary
 
 
 # --- Mandatory source columns -----------------------------------------------
-# Source columns that MUST be reviewed (approved or corrected) in the
-# Databricks App before the workflow can proceed past the review gate
-# (notebook 06).
+# These source columns must be reviewed and approved in the Databricks App
+# before the workflow can proceed past the review gate (notebook 06).
 mandatory_source_columns:
-  - contact_id
-  - email
-  - country
+  - id_registro
+  - anio
+  - mes
+  - codigo_poliza
+  - tipo_riesgo
+  - provincia
+  - canal_distribucion
+  - prima_neta
+  - prima_bruta
+  - num_siniestros_declarados
+  - num_siniestros_pagados
+  - segmento_cliente
+  - cobertura_principal
+  - moneda
 
 
 # --- Semantic fields (eligible for optional value mapping) -----------------
-# Target columns that may still contain values in the source language
-# after column mapping is applied. Notebook 09 can translate these if
-# approved entries exist in value_mapping_dictionary.
+# After column mapping is applied, these fields may still contain values
+# in the source language (e.g. "Incendio" instead of "Fire"). Notebook 09
+# can translate them if approved entries exist in value_mapping_dictionary.
 semantic_fields:
-  - lifecycle_stage
-  - country
+  - risk_type
+  - distribution_channel
+  - customer_segment
+  - risk_zone
+  - primary_coverage
 
 
-# --- AI / LLM configuration -------------------------------------------------
-# All knobs for the LLM call live here. The notebook reads this block via
-# harmonization.llm.load_llm_config() and passes the result to ai_query().
+# --- AI endpoint configuration ---------------------------------------------
 ai:
   # Foundation model endpoint used by ai_query() in notebook 04.
-  # Override at job-run time via the 'ai_endpoint' workflow parameter.
+  # Can be overridden by the DAB job parameter 'ai_endpoint'.
   endpoint: "databricks-gpt-5-2"
-
-  # Optional: full prompt template using ${name} placeholders.
-  # Static placeholders (filled at SQL-build time):
-  #   ${context}            ${target_columns}   ${match_types}
-  #   ${confidence_levels}  ${response_schema}
-  # Dynamic placeholders (turned into SQL column references):
-  #   ${local_column_name}  ${local_data_type}  ${sample_values}
-  # If omitted, harmonization.llm.DEFAULT_PROMPT_TEMPLATE is used.
-  # prompt_template: |
-  #   You are a data harmonization expert.
-  #   Source column "${local_column_name}" has type ${local_data_type}.
-  #   Sample values: ${sample_values}.
-  #   Domain context: ${context}.
-  #   Valid targets: ${target_columns}.
-  #   Match types: ${match_types}.
-  #   Return JSON: ${response_schema}
-
-  # Optional: vocabulary overrides. Defaults shown.
-  # match_types: ["DIRECT", "SEMANTIC_TRANSLATION", "DERIVED", "NO_MATCH"]
-  # confidence_levels: ["HIGH", "MEDIUM", "LOW"]
-  # response_keys: ["global_column_name", "match_type", "rationale", "confidence"]
-
-  # Optional: arbitrary extra placeholders accessible from prompt_template
-  # via ${key}. Useful for injecting tone, language hints, custom rules.
-  # extra_context:
-  #   tone: "concise"
-  #   target_language: "English"
 
   # Rough per-column token estimates for cost monitoring (notebook 04).
   estimated_prompt_tokens_per_column: 200
   estimated_response_tokens_per_column: 80
   estimated_cost_per_1k_tokens: 0.002
+
+
+# --- Data quality rules (consumed by notebook 10) --------------------------
+# Each rule's `predicate` is a SQL expression. Rows for which the predicate
+# evaluates to TRUE are counted as VIOLATIONS. severity: FAILED | WARNING.
+# Always-on checks (row parity, mapping coverage, not-null on required cols,
+# mapping_status presence) run regardless of this list.
+data_quality_rules:
+  - name: numeric_premium_gross_gte_net
+    description: "gross_written_premium_eur >= net_written_premium_eur"
+    predicate: >
+      gross_written_premium_eur IS NOT NULL
+      AND net_written_premium_eur IS NOT NULL
+      AND gross_written_premium_eur < net_written_premium_eur
+    severity: FAILED
+
+  - name: numeric_claims_paid_lte_reported
+    description: "claims_paid_count <= claims_reported_count"
+    predicate: >
+      claims_paid_count IS NOT NULL
+      AND claims_reported_count IS NOT NULL
+      AND claims_paid_count > claims_reported_count
+    severity: FAILED
+
+  - name: loss_ratio_in_range
+    description: "0 <= loss_ratio <= 2"
+    predicate: "loss_ratio IS NOT NULL AND (loss_ratio < 0.0 OR loss_ratio > 2.0)"
+    severity: WARNING

@@ -19,16 +19,17 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog_name", "pt_catalog",        "Catalog Name")
-dbutils.widgets.text("schema_name",  "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("catalog_name", "pt_catalog", "Catalog Name")
+dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
-schema_name  = dbutils.widgets.get("schema_name").strip()
+schema_name = dbutils.widgets.get("schema_name").strip()
 
 DB = f"`{catalog_name}`.`{schema_name}`"
 OPS_TABLE = f"{DB}.`workflow_run_metrics`"
 
 from uuid import uuid4
+
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
 
@@ -42,6 +43,7 @@ print(f"Config: {DB}")
 
 results = []
 
+
 def execute_ddl(label, sql):
     """Execute a DDL statement and record the result."""
     try:
@@ -52,6 +54,7 @@ def execute_ddl(label, sql):
         results.append(("ERROR", label, str(e)))
         print(f"  [ERR] {label}: {e}")
         raise
+
 
 # COMMAND ----------
 
@@ -74,24 +77,29 @@ for _col in _cfg["target_model"]["columns"]:
     _col_defs.append(f"  `{_col_name}` {_col_type} COMMENT '{_col_desc}'")
 
 # Pipeline metadata columns (always appended)
-_col_defs.extend([
-    "  `source_country` STRING COMMENT 'Pipeline metadata: source country name'",
-    "  `source_system` STRING COMMENT 'Pipeline metadata: source system identifier'",
-    "  `harmonization_timestamp` TIMESTAMP COMMENT 'Pipeline metadata: when this row was harmonized'",
-    "  `column_mapping_version` STRING COMMENT 'Pipeline metadata: column mapping dictionary version used'",
-    "  `mapping_status` STRING COMMENT 'Pipeline metadata: mapping status flag'",
-])
+_col_defs.extend(
+    [
+        "  `source_country` STRING COMMENT 'Pipeline metadata: source country name'",
+        "  `source_system` STRING COMMENT 'Pipeline metadata: source system identifier'",
+        "  `harmonization_timestamp` TIMESTAMP COMMENT 'Pipeline metadata: when this row was harmonized'",
+        "  `column_mapping_version` STRING COMMENT 'Pipeline metadata: column mapping dictionary version used'",
+        "  `mapping_status` STRING COMMENT 'Pipeline metadata: mapping status flag'",
+    ]
+)
 
 _col_defs_str = ",\n".join(_col_defs)
 _n_cols = len(_cfg["target_model"]["columns"])
 
-execute_ddl(_target_table, f"""
+execute_ddl(
+    _target_table,
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`{_target_table}` (
 {_col_defs_str}
 )
 USING DELTA
 COMMENT 'Harmonized output table with global English column names. {_n_cols} business columns + 5 pipeline metadata columns.'
-""")
+""",
+)
 
 # COMMAND ----------
 
@@ -99,7 +107,9 @@ COMMENT 'Harmonized output table with global English column names. {_n_cols} bus
 
 # COMMAND ----------
 
-execute_ddl("source_column_inventory", f"""
+execute_ddl(
+    "source_column_inventory",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`source_column_inventory` (
   source_system      STRING           COMMENT 'Source system identifier from config',
   source_table       STRING           COMMENT 'Source table name',
@@ -112,9 +122,12 @@ CREATE TABLE IF NOT EXISTS {DB}.`source_column_inventory` (
 )
 USING DELTA
 COMMENT 'Inventory of all source columns detected in the raw table, with sample values for AI mapping.'
-""")
+""",
+)
 
-execute_ddl("global_target_columns", f"""
+execute_ddl(
+    "global_target_columns",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`global_target_columns` (
   target_table        STRING        COMMENT 'Harmonized target table name',
   global_column_name  STRING        COMMENT 'Global English column name',
@@ -127,9 +140,12 @@ CREATE TABLE IF NOT EXISTS {DB}.`global_target_columns` (
 )
 USING DELTA
 COMMENT 'Authoritative global English column definitions. Shared across all source countries.'
-""")
+""",
+)
 
-execute_ddl("column_mapping_candidates", f"""
+execute_ddl(
+    "column_mapping_candidates",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_candidates` (
   candidate_id               BIGINT    COMMENT 'Surrogate row identifier',
   source_system              STRING    COMMENT 'Source system identifier',
@@ -156,9 +172,12 @@ CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_candidates` (
 )
 USING DELTA
 COMMENT 'AI-proposed column mapping candidates. Human reviewers approve, correct, or reject each row.'
-""")
+""",
+)
 
-execute_ddl("column_mapping_dictionary", f"""
+execute_ddl(
+    "column_mapping_dictionary",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_dictionary` (
   source_system      STRING    COMMENT 'Source system identifier',
   source_table       STRING    COMMENT 'Source table name',
@@ -175,9 +194,12 @@ CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_dictionary` (
 )
 USING DELTA
 COMMENT 'Approved column mapping dictionary. Maps each local source column name to its global equivalent.'
-""")
+""",
+)
 
-execute_ddl("column_mapping_audit", f"""
+execute_ddl(
+    "column_mapping_audit",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_audit` (
   audit_id              BIGINT    COMMENT 'Audit event surrogate identifier',
   local_column_name     STRING    COMMENT 'The source column that was reviewed',
@@ -194,13 +216,15 @@ CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_audit` (
 )
 USING DELTA
 COMMENT 'Immutable audit trail of every review action on column_mapping_candidates.'
-""")
+""",
+)
 
 # COMMAND ----------
 
 # MAGIC %md ## Schema Migration (Idempotent Column Additions)
 
 # COMMAND ----------
+
 
 def _add_column_if_missing(table_ref, col_name, col_type, col_comment):
     """Add a column to an existing Delta table only if it does not already exist."""
@@ -215,16 +239,16 @@ def _add_column_if_missing(table_ref, col_name, col_type, col_comment):
         print(f"  [ERR]     {table_ref}.{col_name}: {e}")
         raise
 
+
 _add_column_if_missing(
     f"{DB}.`column_mapping_candidates`",
-    "app_decision_source", "STRING",
-    "Source of review decision: DATABRICKS_APP | SQL_DIRECT | NULL for pending"
+    "app_decision_source",
+    "STRING",
+    "Source of review decision: DATABRICKS_APP | SQL_DIRECT | NULL for pending",
 )
 
 _add_column_if_missing(
-    f"{DB}.`column_mapping_audit`",
-    "action_source", "STRING",
-    "Source of the action: DATABRICKS_APP | SQL_DIRECT"
+    f"{DB}.`column_mapping_audit`", "action_source", "STRING", "Source of the action: DATABRICKS_APP | SQL_DIRECT"
 )
 
 # COMMAND ----------
@@ -233,7 +257,9 @@ _add_column_if_missing(
 
 # COMMAND ----------
 
-execute_ddl("value_mapping_candidates", f"""
+execute_ddl(
+    "value_mapping_candidates",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_candidates` (
   candidate_id              BIGINT    COMMENT 'Surrogate row identifier',
   source_field              STRING    COMMENT 'Global field name that holds this value',
@@ -252,9 +278,12 @@ CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_candidates` (
 )
 USING DELTA
 COMMENT 'Optional value translation candidates. Source categorical values proposed for harmonized equivalents.'
-""")
+""",
+)
 
-execute_ddl("value_mapping_dictionary", f"""
+execute_ddl(
+    "value_mapping_dictionary",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_dictionary` (
   source_field       STRING    COMMENT 'Global field name',
   raw_value          STRING    COMMENT 'Original source categorical value',
@@ -269,7 +298,8 @@ CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_dictionary` (
 )
 USING DELTA
 COMMENT 'Approved value translation dictionary. Maps source categorical values to harmonized equivalents.'
-""")
+""",
+)
 
 # COMMAND ----------
 
@@ -277,7 +307,9 @@ COMMENT 'Approved value translation dictionary. Maps source categorical values t
 
 # COMMAND ----------
 
-execute_ddl("workflow_run_metrics", f"""
+execute_ddl(
+    "workflow_run_metrics",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`workflow_run_metrics` (
   run_id        STRING    COMMENT 'UUID run identifier',
   workflow_name STRING    COMMENT 'Databricks workflow name',
@@ -290,9 +322,12 @@ CREATE TABLE IF NOT EXISTS {DB}.`workflow_run_metrics` (
 )
 USING DELTA
 COMMENT 'Per-task run telemetry for all workflow notebooks.'
-""")
+""",
+)
 
-execute_ddl("ai_mapping_usage_metrics", f"""
+execute_ddl(
+    "ai_mapping_usage_metrics",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`ai_mapping_usage_metrics` (
   run_id                   STRING    COMMENT 'UUID run identifier',
   mapping_type             STRING    COMMENT 'COLUMN or VALUE',
@@ -308,9 +343,12 @@ CREATE TABLE IF NOT EXISTS {DB}.`ai_mapping_usage_metrics` (
 )
 USING DELTA
 COMMENT 'AI endpoint usage statistics and cost estimates per run.'
-""")
+""",
+)
 
-execute_ddl("data_quality_results", f"""
+execute_ddl(
+    "data_quality_results",
+    f"""
 CREATE TABLE IF NOT EXISTS {DB}.`data_quality_results` (
   run_id       STRING    COMMENT 'UUID run identifier',
   check_name   STRING    COMMENT 'Name of the data quality check',
@@ -321,7 +359,8 @@ CREATE TABLE IF NOT EXISTS {DB}.`data_quality_results` (
 )
 USING DELTA
 COMMENT 'Data quality check results per pipeline run.'
-""")
+""",
+)
 
 # COMMAND ----------
 
@@ -329,7 +368,9 @@ COMMENT 'Data quality check results per pipeline run.'
 
 # COMMAND ----------
 
-execute_ddl("vw_pending_column_mappings", f"""
+execute_ddl(
+    "vw_pending_column_mappings",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_pending_column_mappings` AS
 SELECT
   candidate_id, source_system, local_column_name, local_data_type,
@@ -339,9 +380,12 @@ SELECT
 FROM {DB}.`column_mapping_candidates`
 WHERE review_status = 'PENDING'
 ORDER BY mandatory_flag DESC, confidence DESC, local_column_name
-""")
+""",
+)
 
-execute_ddl("vw_mapping_review_summary", f"""
+execute_ddl(
+    "vw_mapping_review_summary",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_mapping_review_summary` AS
 SELECT
   review_status, mandatory_flag, confidence,
@@ -349,9 +393,12 @@ SELECT
   SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
 FROM {DB}.`column_mapping_candidates`
 GROUP BY review_status, mandatory_flag, confidence
-""")
+""",
+)
 
-execute_ddl("vw_publish_readiness", f"""
+execute_ddl(
+    "vw_publish_readiness",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_publish_readiness` AS
 WITH mandatory AS (
   SELECT local_column_name AS mandatory_column_name,
@@ -363,9 +410,12 @@ WITH mandatory AS (
 )
 SELECT * FROM mandatory
 ORDER BY is_ready ASC, mandatory_column_name
-""")
+""",
+)
 
-execute_ddl("vw_column_mapping_low_conf", f"""
+execute_ddl(
+    "vw_column_mapping_low_conf",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_low_conf` AS
 SELECT
   candidate_id, source_system, local_column_name, local_data_type,
@@ -374,9 +424,12 @@ SELECT
 FROM {DB}.`column_mapping_candidates`
 WHERE UPPER(confidence) = 'LOW' OR ai_error_status IS NOT NULL
 ORDER BY mandatory_flag DESC, local_column_name
-""")
+""",
+)
 
-execute_ddl("vw_column_mapping_coverage", f"""
+execute_ddl(
+    "vw_column_mapping_coverage",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_coverage` AS
 SELECT
   g.global_column_name, g.global_data_type, g.semantic_group,
@@ -393,7 +446,8 @@ FROM {DB}.`global_target_columns` g
 LEFT JOIN {DB}.`column_mapping_candidates` c
   ON g.global_column_name = COALESCE(c.final_global_column_name, c.proposed_global_column_name)
 ORDER BY g.semantic_group, g.global_column_name
-""")
+""",
+)
 
 # COMMAND ----------
 
@@ -411,22 +465,31 @@ _now = _dt.datetime.utcnow()
 
 # Load target columns from config (reuses _cfg from the DDL section above)
 global_cols = [
-    (c["name"], c["type"], c["description"], c.get("examples", []), c.get("required", False), c.get("semantic_group", ""))
+    (
+        c["name"],
+        c["type"],
+        c["description"],
+        c.get("examples", []),
+        c.get("required", False),
+        c.get("semantic_group", ""),
+    )
     for c in _cfg["target_model"]["columns"]
 ]
 
 print(f"Target model: {_target_table}, {len(global_cols)} columns")
 
-gtc_schema = StructType([
-    StructField("target_table",        StringType(),              False),
-    StructField("global_column_name",  StringType(),              False),
-    StructField("global_data_type",    StringType(),              True),
-    StructField("business_definition", StringType(),              True),
-    StructField("example_values",      ArrayType(StringType()),   True),
-    StructField("required_flag",       BooleanType(),             True),
-    StructField("semantic_group",      StringType(),              True),
-    StructField("created_at",          TimestampType(),           True),
-])
+gtc_schema = StructType(
+    [
+        StructField("target_table", StringType(), False),
+        StructField("global_column_name", StringType(), False),
+        StructField("global_data_type", StringType(), True),
+        StructField("business_definition", StringType(), True),
+        StructField("example_values", ArrayType(StringType()), True),
+        StructField("required_flag", BooleanType(), True),
+        StructField("semantic_group", StringType(), True),
+        StructField("created_at", TimestampType(), True),
+    ]
+)
 
 gtc_rows = [
     (_target_table, col_name, dtype, definition, examples, req, group, _now)
@@ -466,7 +529,7 @@ display(spark.table(f"{DB}.`global_target_columns`").orderBy("semantic_group", "
 
 # COMMAND ----------
 
-ok_count  = sum(1 for r in results if r[0] == "OK")
+ok_count = sum(1 for r in results if r[0] == "OK")
 err_count = sum(1 for r in results if r[0] == "ERROR")
 print(f"DDL results: {ok_count} OK, {err_count} ERROR")
 
@@ -479,5 +542,13 @@ if err_count > 0:
 
 # COMMAND ----------
 
-log_run_metric(spark, OPS_TABLE, RUN_ID, "create_global_model_and_control_tables", "SUCCEEDED", _start, gtc_count,
-               f"Created all tables and views. global_target_columns prepopulated with {gtc_count} rows.")
+log_run_metric(
+    spark,
+    OPS_TABLE,
+    RUN_ID,
+    "create_global_model_and_control_tables",
+    "SUCCEEDED",
+    _start,
+    gtc_count,
+    f"Created all tables and views. global_target_columns prepopulated with {gtc_count} rows.",
+)

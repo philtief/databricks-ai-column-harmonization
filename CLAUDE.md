@@ -1,253 +1,63 @@
-# Column Mapping to Global Model
+# Column Harmonization on Databricks
 
-AI-powered column harmonization from local source schemas to a standardized global English data model, with human-in-the-loop review via a Databricks App.
-
-## Setup Guide: Deploying to a Customer's Databricks Workspace
-
-### Prerequisites
-
-- Databricks workspace with Unity Catalog enabled
-- SQL Warehouse (Serverless recommended)
-- A catalog you have `CREATE SCHEMA` permissions on (or an existing catalog)
-- Databricks CLI installed and authenticated (`databricks auth login`)
-- Git and Python 3.10+ installed locally
-
-### Step 1: Clone and Configure CLI
-
-```bash
-git clone https://github.com/philtief/databricks-column-harmonization.git
-cd databricks-column-harmonization
-
-# Authenticate with the target workspace
-databricks auth login --host https://<workspace>.cloud.databricks.com
-```
-
-Verify your CLI profile works: `databricks current-user me`
-
-### Step 2: Create `config/harmonization_config.yaml`
-
-Copy the template and fill in your values:
-```bash
-cp config/harmonization_config.yaml.template config/harmonization_config.yaml
-```
-
-Edit each section:
-
-**source_context** — Describe the source data for the LLM:
-```yaml
-source_context:
-  domain: "Germany motor insurance quarterly reporting"
-  source_system: "DE_MOTOR_RAW"
-  source_table: "motor_insurance_quarterly_raw"
-  description: >
-    Quarterly reporting data from Germany motor insurance.
-    Source columns are in German. Target model uses English names.
-```
-
-**target_model** — Define the ground truth global data model. Each column's `description` is read by the LLM to find the best match:
-```yaml
-target_model:
-  table_name: "motor_insurance_quarterly"
-  columns:
-    - name: policy_id
-      type: STRING
-      description: "Unique policy identifier"
-      examples: ["DE-001-2024"]
-      required: true
-      semantic_group: policy
-    # ... define all target columns
-```
-
-**mandatory_source_columns** — Source columns that must be reviewed before the workflow proceeds:
-```yaml
-mandatory_source_columns:
-  - versicherungsnummer
-  - quartal
-  # ... list your critical source columns
-```
-
-**semantic_fields** — Target columns eligible for optional value translation (e.g., German to English categories):
-```yaml
-semantic_fields:
-  - vehicle_type
-  - coverage_type
-```
-
-### Step 3: Edit `databricks.yml`
-
-Set the `catalog_name` parameter default to your catalog:
-
-```yaml
-parameters:
-  - name: catalog_name
-    default: your_catalog_name    # <-- change this
-  - name: schema_name
-    default: harmonizing_agent
-  - name: source_country
-    default: Germany              # <-- change this
-```
-
-If your workspace uses a CLI profile, uncomment and set:
-```yaml
-workspace:
-  profile: your-profile-name
-```
-
-### Step 4: Remove the Demo Data Task
-
-The workflow includes a demo task (`generate_demo_data`) that creates synthetic Spain data. For production use with your own data:
-
-1. In `databricks.yml`, delete the `generate_demo_data` task
-2. Update `inventory_source_columns` to depend only on `create_global_model_and_control_tables`
-3. Ensure your raw source table already exists in `{catalog_name}.{schema_name}`
-
-To test with the Spain demo first, skip this step — the demo task will create sample data.
-
-### Step 5: Deploy
-
-```bash
-databricks bundle deploy --target dev
-```
-
-This creates:
-- The Databricks workflow job (11 tasks)
-- The Streamlit review app
-
-### Step 6: Configure the Databricks App
-
-After deployment, get the job ID:
-```bash
-databricks jobs list --name Column_Mapping_To_Global_Model --output json | jq '.[0].job_id'
-```
-
-Get the SQL Warehouse ID:
-```bash
-databricks warehouses list --output json | jq '.[0].id'
-```
-
-Edit `apps/column_mapping_review_app/app.yaml` with these values:
-```yaml
-env:
-  - name: CATALOG_NAME
-    value: "your_catalog_name"
-  - name: DATABRICKS_WAREHOUSE_ID
-    value: "abc123def456"
-  - name: WORKFLOW_JOB_ID
-    value: "123456789"
-```
-
-Then redeploy:
-```bash
-databricks bundle deploy --target dev
-```
-
-### Step 7: Grant Permissions to the App Service Principal
-
-The Databricks App runs as an auto-created service principal. Grant it access:
-
-```sql
--- Run in SQL Editor or a notebook
-GRANT USE CATALOG ON CATALOG your_catalog_name TO `<app-service-principal-id>`;
-GRANT USE SCHEMA ON SCHEMA your_catalog_name.harmonizing_agent TO `<app-service-principal-id>`;
-GRANT SELECT, MODIFY ON SCHEMA your_catalog_name.harmonizing_agent TO `<app-service-principal-id>`;
-```
-
-Also grant `CAN_USE` on the SQL Warehouse to the service principal (via Warehouse permissions UI or API).
-
-Find the service principal ID in the Databricks App settings page.
-
-### Step 8: Run the Workflow
-
-```bash
-databricks bundle run Column_Mapping_To_Global_Model
-```
-
-The workflow will:
-1. Bootstrap catalog and schema (task 00)
-2. Generate or load source data (task 01)
-3. Create all control tables and the global target model (task 02)
-4. Inventory source columns with sample values (task 03)
-5. Use AI to propose column mappings (task 04)
-6. Prepare review views (task 05)
-7. **PAUSE at the review gate** (task 06) — waiting for human review
-
-### Step 9: Review Mappings in the Databricks App
-
-Open the app URL (shown in the Databricks Apps page). For each source column:
-- **Approve** if the AI proposal is correct
-- **Correct** if you want a different target column
-- **Reject** if the column should be excluded
-
-All mandatory columns must be approved/corrected before the gate passes.
-
-### Step 10: Resume the Workflow
-
-After reviewing, re-run the workflow. It will pick up from the review gate:
-```bash
-databricks bundle run Column_Mapping_To_Global_Model
-```
-
-Tasks 07-10 run automatically:
-- Build the approved mapping dictionary
-- Apply mappings to create the harmonized table
-- Optionally translate categorical values
-- Run data quality checks
-
-### Verification
-
-Check the harmonized output:
-```sql
-SELECT * FROM your_catalog_name.harmonizing_agent.motor_insurance_quarterly LIMIT 10;
-```
-
-Check data quality results:
-```sql
-SELECT * FROM your_catalog_name.harmonizing_agent.data_quality_results ORDER BY recorded_at DESC;
-```
-
-## Troubleshooting
-
-**"FATAL: Could not load harmonization config"**
-Config file is missing or has a syntax error. Verify `config/harmonization_config.yaml` exists and is valid YAML. Run `python -c "import yaml; yaml.safe_load(open('config/harmonization_config.yaml'))"` locally to check syntax.
-
-**App shows "DATABRICKS_WAREHOUSE_ID environment variable is not set"**
-Edit `apps/column_mapping_review_app/app.yaml` and set all env vars. Redeploy with `databricks bundle deploy`.
-
-**App shows "No data available yet" on all pages**
-The workflow hasn't run yet (or hasn't reached notebook 04). Run the workflow first: `databricks bundle run Column_Mapping_To_Global_Model`.
-
-**Review gate (task 06) fails with "mandatory columns still PENDING"**
-Open the Streamlit review app and approve or correct all mandatory columns. Then re-run the workflow.
-
-**App Service Principal gets "access denied"**
-Grant permissions to the SP (see Step 7 above). Also grant CAN_USE on the SQL Warehouse via the warehouse permissions UI (Settings > SQL Warehouses > your warehouse > Permissions).
-
-**ai_query returns AI_ERROR for some columns**
-The LLM couldn't map the column. Check the `mapping_rationale` and `ai_error_status` fields in `column_mapping_candidates`. Common causes: ambiguous column names, missing context in config description, or LLM endpoint not available.
-
-**Databricks Runtime compatibility**
-Requires Databricks Runtime 13.0+ (Python 3.10+). Serverless notebooks are supported.
+AI-powered column harmonization from local source schemas to a configurable global data model, with human-in-the-loop review via a Databricks App.
 
 ## Project Conventions
 
-- **Config-driven**: All domain customization is in `config/harmonization_config.yaml`. Do not hardcode domain-specific values in notebooks.
-- **Table names are generic**: No country suffixes. Country isolation is handled at the schema level.
+- **Config-driven**: All domain customization lives in `config/harmonization_config.yaml`. Notebooks must not hard-code domain values, column names, or business rules.
+- **Generic table names**: No country/region suffix on table names. Multi-source isolation is handled at the catalog/schema level.
 - **Config is mandatory**: Notebooks fail loudly if config YAML is missing. No silent fallbacks.
-- **All notebooks are domain-agnostic**: Demo data generation lives in `examples/spain_demo/`.
-- **Pre-commit hooks**: Black (line-length 120), flake8, mypy, pytest with 80% minimum coverage.
-- **Tests**: `pytest tests/ --cov=src --cov-report=term-missing` (73 tests, 100% coverage on src/).
-- **Linting**: `bash scripts/lint.sh` runs black, flake8, mypy.
+- **Demo data lives in `examples/`**: The Spain property-insurance demo (`examples/spain_demo/`) is one example among many — never special-case the Spain config in the core workflow.
+- **Public LLM parameterization**: All LLM knobs (endpoint, prompt template, vocabularies, cost) are read by `harmonization.llm.load_llm_config(yaml)`; the notebook only calls `build_ai_query_sql(...)`. Never inline a prompt string in a notebook.
+- **Lint with ruff**: `bash scripts/lint.sh` runs `ruff check` + `ruff format --check`. Pre-commit hooks enforce both.
+- **Tests**: `pytest tests/` runs the full suite; CI gates on 80% line coverage of `src/`.
+
+## Architecture
+
+```
+config/harmonization_config.yaml
+        |
+        +-- source_context, target_model, mandatory_source_columns,
+        |   semantic_fields, ai (LLM config), data_quality_rules
+        v
+[ Workflow (notebooks/00,02-10) ]   [ Streamlit Review App ]
+        |                                       ^
+        v                                       |
+  Delta tables in <catalog>.<schema>  <---------+
+```
+
+## Repository Layout
+
+```
+config/                            Domain config (YAML)
+notebooks/                         Workflow notebooks (00, 02-10) + _shared_utils
+examples/spain_demo/               Spain property-insurance demo
+apps/column_mapping_review_app/    Streamlit review app
+src/harmonization/                 Pure-Python testable modules
+  config.py                        YAML loader + getters
+  constants.py                     Framework invariants
+  llm.py                           Prompt template + ai_query SQL builder
+  tables.py                        Delta table reference builder
+  validation.py                    Generic data quality helpers
+tests/                             pytest suite
+scripts/lint.sh                    ruff lint + format check
+```
+
+## Customer Setup
+
+End-to-end customer setup is documented in [docs/SETUP.md](docs/SETUP.md). It walks through bringing your own local source schema and global target model. Do not duplicate setup steps in this file — keep this file focused on conventions and contributor context.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `config/harmonization_config.yaml` | Single source of truth for domain configuration |
-| `config/harmonization_config.yaml.template` | Config template with placeholders for new deployments |
+| `config/harmonization_config.yaml` | Active domain configuration |
+| `config/harmonization_config.yaml.template` | Placeholder template for new deployments |
 | `databricks.yml` | DAB definition: workflow job + Streamlit app |
-| `notebooks/_shared_utils.py` | Shared helpers: logging, config loading, table refs |
+| `notebooks/_shared_utils.py` | Shared helpers: logging, config loader, table refs |
 | `notebooks/00, 02-10` | Workflow notebooks (all domain-agnostic) |
-| `examples/spain_demo/` | Demo data generator (Spain property insurance) |
+| `examples/spain_demo/` | Spain property-insurance demo (data + config) |
 | `apps/column_mapping_review_app/app.py` | Streamlit review app |
-| `src/harmonization/` | Extracted Python modules (config loader, validation, constants) |
+| `src/harmonization/llm.py` | LLM prompt template + `ai_query()` SQL builder |
+| `src/harmonization/validation.py` | Data quality check helpers |
 | `tests/` | pytest test suite |

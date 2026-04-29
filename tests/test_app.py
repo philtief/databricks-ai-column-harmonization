@@ -6,6 +6,7 @@ streamlit and databricks.sdk at import time.
 
 import sys
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 

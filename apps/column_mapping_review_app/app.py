@@ -4,8 +4,10 @@ Streamlit application for reviewing AI-proposed column mappings in Databricks Ap
 Connects to Unity Catalog via environment variables (CATALOG_NAME, SCHEMA_NAME).
 """
 
+import contextlib
 import os
 import time
+
 import pandas as pd
 import streamlit as st
 from databricks.sdk import WorkspaceClient
@@ -336,7 +338,7 @@ def run_sql(statement: str) -> pd.DataFrame:
     Returns an empty DataFrame on any error.
     """
     if not WAREHOUSE_ID:
-        st.error("DATABRICKS_WAREHOUSE_ID environment variable is not set. " "Please configure it in app.yaml.")
+        st.error("DATABRICKS_WAREHOUSE_ID environment variable is not set. Please configure it in app.yaml.")
         return pd.DataFrame()
 
     try:
@@ -1054,7 +1056,7 @@ def page_publish_readiness():
         return
 
     # Build a status lookup
-    status_lookup = dict(zip(df_all["local_column_name"], df_all["review_status"]))
+    status_lookup = dict(zip(df_all["local_column_name"], df_all["review_status"], strict=False))
 
     # Evaluate mandatory columns
     all_mandatory_resolved = True
@@ -1075,9 +1077,7 @@ def page_publish_readiness():
         )
     else:
         unresolved = sum(1 for m in mandatory_statuses if not m["resolved"])
-        st.error(
-            f"BLOCKED\n\n" f"{unresolved} mandatory column(s) are not yet resolved (must be APPROVED or CORRECTED)."
-        )
+        st.error(f"BLOCKED\n\n{unresolved} mandatory column(s) are not yet resolved (must be APPROVED or CORRECTED).")
 
     st.divider()
 
@@ -1151,7 +1151,7 @@ def page_publish_readiness():
 
 
 def main():
-    global MANDATORY_COLUMNS  # noqa: PLW0603
+    global MANDATORY_COLUMNS
     st.set_page_config(
         page_title="Column Mapping Review",
         page_icon="data:image/svg+xml,"
@@ -1165,10 +1165,8 @@ def main():
 
     # Load mandatory columns from database (once per session)
     if not MANDATORY_COLUMNS and WAREHOUSE_ID:
-        try:
+        with contextlib.suppress(Exception):
             MANDATORY_COLUMNS = _load_mandatory_columns_from_db(get_workspace_client(), WAREHOUSE_ID)
-        except Exception:
-            pass
 
     user = get_current_user()
 

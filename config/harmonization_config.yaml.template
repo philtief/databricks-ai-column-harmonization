@@ -2,30 +2,31 @@
 # Column Harmonization Configuration — TEMPLATE
 # ==========================================================================
 # Copy this file to config/harmonization_config.yaml and fill in your values.
-# This file defines the domain, target data model, and AI settings for
-# the column harmonization workflow.
+#   cp config/harmonization_config.yaml.template config/harmonization_config.yaml
 #
-# After editing:  databricks bundle deploy && databricks bundle run Column_Mapping_To_Global_Model
+# After editing:
+#   databricks bundle deploy && databricks bundle run Column_Mapping_To_Global_Model
 # ==========================================================================
 
 # --- Source context (fed to the LLM when proposing column mappings) --------
 source_context:
-  # Short domain label shown in logs and prompts
+  # Short label shown in logs and prompts
   domain: "<your domain, e.g. Germany motor insurance quarterly reporting>"
 
   # Identifier stored in control tables to distinguish this source
   source_system: "<your source system, e.g. DE_MOTOR_RAW>"
 
-  # Raw table name — must already exist in your catalog.schema
+  # Raw table name — must already exist in your <catalog>.<schema>
   source_table: "<your raw table name, e.g. motor_insurance_quarterly_raw>"
 
-  # Full description passed to the LLM. Be specific: the more context the
-  # model has, the better the mapping quality. Mention the language of
-  # source columns, the business domain, and any naming conventions.
+  # Description passed to the LLM. Be specific: the more context, the better
+  # the mapping quality. Mention source language, business domain, and any
+  # naming conventions.
   description: >
-    <Describe your source data. Mention the source language, business domain,
-    and any naming conventions. Example: Quarterly reporting data from Germany
-    motor insurance. Source columns are in German. Target model uses English names.>
+    <Describe your source data. Mention source language, business domain, and
+    any naming conventions. Example: Quarterly reporting data from Germany
+    motor insurance. Source columns are in German. Target model uses English
+    names.>
 
 
 # --- Target data model (the "ground truth" the LLM maps into) -------------
@@ -37,15 +38,16 @@ target_model:
 
   columns:
     # Each column needs: name, type, description.
-    # Optional: examples (helps the LLM), required (gates the review), semantic_group (for grouping).
+    # Optional: examples (helps the LLM), required (gates the review),
+    # semantic_group (logical grouping shown in the review app).
     #
-    # Example column block:
+    # Example:
     # - name: policy_id
     #   type: STRING
     #   description: "Unique policy identifier assigned at underwriting"
     #   examples: ["DE-001-2024", "DE-002-2024"]
-    #   required: true               # Must be mapped before workflow proceeds
-    #   semantic_group: policy        # Logical grouping (shown in app + used by coverage view)
+    #   required: true
+    #   semantic_group: policy
 
     - name: "<column_name>"
       type: "<SQL type: STRING, INT, BIGINT, DOUBLE, TIMESTAMP, etc.>"
@@ -54,30 +56,83 @@ target_model:
       required: true
       semantic_group: "<grouping label, e.g. policy, claims, premium>"
 
-    # Add 15-30 columns. The more precise the description, the better the AI mapping.
+    # Add as many columns as your target model needs. The more precise the
+    # description, the better the AI mapping quality.
 
 
-# --- Mandatory source columns ------------------------------------------------
+# --- Mandatory source columns ----------------------------------------------
 # Source columns that MUST be reviewed (approved or corrected) before the
 # workflow proceeds past the review gate (notebook 06). List the local
 # column names from your raw table.
 mandatory_source_columns:
   - "<local_column_name_1>"
   - "<local_column_name_2>"
-  # Add all critical source columns that must be mapped
 
 
-# --- Semantic fields (optional value translation) ----------------------------
+# --- Semantic fields (optional value translation) --------------------------
 # Target column names eligible for value-level translation (notebook 09).
-# E.g., translating German category values to English. Leave empty if not needed.
+# E.g., translating German category values to English. Leave empty if not
+# needed.
 semantic_fields:
   - "<target_column_name_1>"
   # - "<target_column_name_2>"
 
 
-# --- AI settings -------------------------------------------------------------
+# --- AI / LLM configuration ------------------------------------------------
 ai:
-  default_endpoint: "databricks-gpt-5-2"
-  estimated_prompt_tokens_per_column: 800
-  estimated_response_tokens_per_column: 200
-  estimated_cost_per_1k_tokens_eur: 0.002
+  # Foundation model endpoint used by ai_query() in notebook 04.
+  endpoint: "databricks-gpt-5-2"
+
+  # Optional: full prompt template using ${name} placeholders.
+  # Static placeholders (filled at SQL-build time):
+  #   ${context}            ${target_columns}   ${match_types}
+  #   ${confidence_levels}  ${response_schema}
+  # Dynamic placeholders (turned into SQL column references):
+  #   ${local_column_name}  ${local_data_type}  ${sample_values}
+  # Omit to use the built-in default prompt.
+  # prompt_template: |
+  #   You are a data harmonization expert.
+  #   Source column "${local_column_name}" has type ${local_data_type}.
+  #   Sample values: ${sample_values}.
+  #   Domain context: ${context}.
+  #   Valid targets: ${target_columns}.
+  #   Match types: ${match_types}.
+  #   Return JSON: ${response_schema}
+
+  # Optional: vocabulary overrides. Defaults shown.
+  # match_types: ["DIRECT", "SEMANTIC_TRANSLATION", "DERIVED", "NO_MATCH"]
+  # confidence_levels: ["HIGH", "MEDIUM", "LOW"]
+  # response_keys: ["global_column_name", "match_type", "rationale", "confidence"]
+
+  # Optional: extra placeholders accessible from prompt_template via ${key}.
+  # Useful for tone, language hints, or domain-specific rules.
+  # extra_context:
+  #   tone: "concise"
+  #   target_language: "English"
+
+  # Rough per-column token estimates for cost monitoring (notebook 04).
+  estimated_prompt_tokens_per_column: 200
+  estimated_response_tokens_per_column: 80
+  estimated_cost_per_1k_tokens: 0.002
+
+
+# --- Data quality rules (notebook 10) --------------------------------------
+# Domain-specific business rules expressed as SQL predicates evaluated
+# against the harmonized table. Rows where the predicate is TRUE are counted
+# as violations. Severity: FAILED (raise exception) or WARNING (log only).
+#
+# Always-on checks (no config needed): row parity, mapping coverage,
+# not-null on every required: true target column, mapping_status presence.
+#
+# Add as many rules as you need:
+# data_quality_rules:
+#   - name: gross_gte_net
+#     description: "gross_premium >= net_premium"
+#     predicate: "gross_premium IS NOT NULL AND net_premium IS NOT NULL AND gross_premium < net_premium"
+#     severity: FAILED
+#
+#   - name: ratio_in_range
+#     description: "0 <= ratio <= 1"
+#     predicate: "ratio IS NOT NULL AND (ratio < 0 OR ratio > 1)"
+#     severity: WARNING
+data_quality_rules: []

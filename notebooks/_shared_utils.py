@@ -7,21 +7,24 @@
 
 # COMMAND ----------
 
-import yaml
 import datetime as _dt
-from pyspark.sql.types import StructType, StructField, StringType, LongType, TimestampType
+
+import yaml
+from pyspark.sql.types import LongType, StringType, StructField, StructType, TimestampType
 
 # Schema for workflow_run_metrics (used by every notebook)
-LOG_SCHEMA = StructType([
-    StructField("run_id",        StringType(),    False),
-    StructField("workflow_name", StringType(),    True),
-    StructField("task_name",     StringType(),    True),
-    StructField("task_status",   StringType(),    True),
-    StructField("started_at",    TimestampType(), True),
-    StructField("finished_at",   TimestampType(), True),
-    StructField("row_count",     LongType(),      True),
-    StructField("message",       StringType(),    True),
-])
+LOG_SCHEMA = StructType(
+    [
+        StructField("run_id", StringType(), False),
+        StructField("workflow_name", StringType(), True),
+        StructField("task_name", StringType(), True),
+        StructField("task_status", StringType(), True),
+        StructField("started_at", TimestampType(), True),
+        StructField("finished_at", TimestampType(), True),
+        StructField("row_count", LongType(), True),
+        StructField("message", StringType(), True),
+    ]
+)
 
 WORKFLOW_NAME = "Column_Mapping_To_Global_Model"
 
@@ -40,6 +43,7 @@ def log_run_metric(spark_session, ops_table, run_id, task_name, status, started_
 # MAGIC %md ## Config Loader
 
 # COMMAND ----------
+
 
 def load_harmonization_config():
     """Load config/harmonization_config.yaml from the bundle workspace path."""
@@ -64,40 +68,17 @@ def load_harmonization_config():
             "See config/harmonization_config.yaml.template for the expected format."
         ) from e
 
+
 # COMMAND ----------
 
 # MAGIC %md ## Table Reference Builder
 
 # COMMAND ----------
 
-def get_table_refs(config, db_prefix):
-    """Build fully-qualified table references from config.
-
-    Returns a dict with keys for every table/view used by the workflow.
-    Table names are generic (no country suffix). Country isolation is
-    handled at the schema level via the db_prefix.
-    """
-    src_table = config["source_context"]["source_table"]
-    tgt_table = config["target_model"]["table_name"]
-    src_system = config["source_context"]["source_system"]
-
-    return {
-        "raw_table": f"{db_prefix}.`{src_table}`",
-        "harm_table": f"{db_prefix}.`{tgt_table}`",
-        "source_system": src_system,
-        "source_table_name": src_table,
-        "target_table_name": tgt_table,
-        "inv_table": f"{db_prefix}.`source_column_inventory`",
-        "cand_table": f"{db_prefix}.`column_mapping_candidates`",
-        "dict_table": f"{db_prefix}.`column_mapping_dictionary`",
-        "audit_table": f"{db_prefix}.`column_mapping_audit`",
-        "vcand_table": f"{db_prefix}.`value_mapping_candidates`",
-        "vdict_table": f"{db_prefix}.`value_mapping_dictionary`",
-        "gtc_table": f"{db_prefix}.`global_target_columns`",
-        "ops_table": f"{db_prefix}.`workflow_run_metrics`",
-        "usage_table": f"{db_prefix}.`ai_mapping_usage_metrics`",
-        "dq_table": f"{db_prefix}.`data_quality_results`",
-    }
+# Delegated to harmonization.tables so the logic is unit-testable outside
+# the notebook runtime. Importing into this %run-injected module exposes
+# get_table_refs to every workflow notebook unchanged.
+from harmonization.tables import get_table_refs
 
 # COMMAND ----------
 

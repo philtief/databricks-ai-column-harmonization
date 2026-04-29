@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "column-harmonization"
 version = "1.0.0"
-description = "AI-powered column harmonization from local schemas to a global English model"
+description = "AI-powered column harmonization from local schemas to a configurable global data model"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
@@ -18,26 +18,13 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "black>=24.0",
-    "flake8>=7.0",
-    "mypy>=1.8",
-    "types-PyYAML>=6.0",
+    "ruff>=0.6",
 ]
 app = [
     "streamlit>=1.37.0",
     "pandas>=2.0.0",
     "databricks-sdk>=0.28.0",
 ]
-
-[tool.black]
-line-length = 120
-target-version = ["py310"]
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -49,15 +36,37 @@ addopts = "--tb=short -q"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+extend-exclude = [".venv", "build", "dist", ".databricks"]
 
 [tool.ruff.lint]
-extend-ignore = ["E203"]
+# Enabled rule sets:
+#   E,W   pycodestyle
+#   F     pyflakes
+#   I     isort
+#   B     flake8-bugbear
+#   UP    pyupgrade
+#   SIM   flake8-simplify
+#   PL    pylint subset
+#   RUF   ruff-specific
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "PLE", "PLW", "RUF"]
+ignore = [
+    "E203",   # whitespace before ':' (Black-compatible)
+    "PLW0603", # global statement (allowed in app singletons)
+    "B008",    # function calls in default args (FastAPI/Streamlit pattern)
+    "SIM108",  # ternary preference (often less readable)
+]
 
 [tool.ruff.lint.per-file-ignores]
-# Databricks notebooks: runtime globals (F821), cell imports (E402), unused imports
-# shared via %run (F401), f-strings in print statements (F541)
-"notebooks/*.py" = ["F821", "E402", "F401", "F541"]
-"examples/**/*.py" = ["F821", "E402", "F401", "F541"]
+# Databricks notebooks rely on runtime globals (spark, dbutils, display)
+# and use %run-injected names. They also use top-level imports across cells.
+# E501 is ignored because notebooks contain long SQL DDL/COMMENT strings
+# that are hard to wrap without sacrificing SQL readability.
+"notebooks/*.py" = ["F821", "E402", "F401", "F541", "B007", "B904", "PLW0603", "E501", "RUF005"]
+"examples/**/*.py" = ["F821", "E402", "F401", "F541", "B007", "B904", "PLW0603", "E501", "B905"]
+"tests/*.py" = ["PLR2004"]
+
+[tool.ruff.format]
+line-ending = "lf"
 
 [tool.setuptools.packages.find]
 where = ["src"]

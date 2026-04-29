@@ -21,25 +21,25 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog_name",    "pt_catalog",          "Catalog Name")
-dbutils.widgets.text("schema_name",     "harmonizing_agent",   "Schema Name")
-dbutils.widgets.text("ai_endpoint",     "databricks-gpt-5-2",  "AI Endpoint")
-dbutils.widgets.text("mapping_version", "v1",                  "Mapping Version")
+dbutils.widgets.text("catalog_name", "pt_catalog", "Catalog Name")
+dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("ai_endpoint", "", "AI Endpoint (override; blank = use config)")
+dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
 
-catalog_name    = dbutils.widgets.get("catalog_name").strip()
-schema_name     = dbutils.widgets.get("schema_name").strip()
-ai_endpoint     = dbutils.widgets.get("ai_endpoint").strip()
+catalog_name = dbutils.widgets.get("catalog_name").strip()
+schema_name = dbutils.widgets.get("schema_name").strip()
+ai_endpoint_override = dbutils.widgets.get("ai_endpoint").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
-DB             = f"`{catalog_name}`.`{schema_name}`"
-_cfg           = load_harmonization_config()
-_refs          = get_table_refs(_cfg, DB)
-INV_TABLE      = _refs["inv_table"]
-GTC_TABLE      = _refs["gtc_table"]
-DICT_TABLE     = _refs["dict_table"]
-CAND_TABLE     = _refs["cand_table"]
-USAGE_TABLE    = _refs["usage_table"]
-OPS_TABLE      = _refs["ops_table"]
+DB = f"`{catalog_name}`.`{schema_name}`"
+_cfg = load_harmonization_config()
+_refs = get_table_refs(_cfg, DB)
+INV_TABLE = _refs["inv_table"]
+GTC_TABLE = _refs["gtc_table"]
+DICT_TABLE = _refs["dict_table"]
+CAND_TABLE = _refs["cand_table"]
+USAGE_TABLE = _refs["usage_table"]
+OPS_TABLE = _refs["ops_table"]
 
 SOURCE_SYSTEM = _refs["source_system"]
 
@@ -47,7 +47,17 @@ MANDATORY_COLUMNS = set(_cfg["mandatory_source_columns"])
 
 AI_CONTEXT = _cfg["source_context"]["description"].strip()
 
-print(f"Config: {DB}, ai_endpoint={ai_endpoint}, mandatory_cols={len(MANDATORY_COLUMNS)}")
+# All LLM knobs (endpoint, prompt template, vocabularies, cost) come from the
+# `ai:` block of harmonization_config.yaml. The widget can override the endpoint.
+from dataclasses import replace as _dc_replace
+
+from harmonization.llm import build_ai_query_sql, estimate_cost, load_llm_config
+
+llm_config = load_llm_config(_cfg)
+if ai_endpoint_override:
+    llm_config = _dc_replace(llm_config, endpoint=ai_endpoint_override)
+
+print(f"Config: {DB}, ai_endpoint={llm_config.endpoint}, mandatory_cols={len(MANDATORY_COLUMNS)}")
 
 # COMMAND ----------
 
@@ -56,11 +66,9 @@ print(f"Config: {DB}, ai_endpoint={ai_endpoint}, mandatory_cols={len(MANDATORY_C
 # COMMAND ----------
 
 from uuid import uuid4
+
 from pyspark.sql import functions as F
-from pyspark.sql.types import (
-    StructType, StructField,
-    StringType, LongType, DoubleType, TimestampType
-)
+from pyspark.sql.types import DoubleType, LongType, StringType, StructField, StructType, TimestampType
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
@@ -71,10 +79,7 @@ _start = _dt.datetime.utcnow()
 
 # COMMAND ----------
 
-global_cols_list = [
-    row["global_column_name"]
-    for row in spark.table(GTC_TABLE).select("global_column_name").collect()
-]
+global_cols_list = [row["global_column_name"] for row in spark.table(GTC_TABLE).select("global_column_name").collect()]
 
 global_cols_list_with_no_match = global_cols_list + ["NO_MATCH"]
 global_cols_str = ", ".join(global_cols_list_with_no_match)
@@ -88,12 +93,16 @@ print(f"Global target columns: {len(global_cols_list)}")
 # COMMAND ----------
 
 # Source columns that already have an active approved mapping can be skipped
-already_approved = spark.sql(f"""
+already_approved = (
+    spark.sql(f"""
     SELECT DISTINCT local_column_name
     FROM {DICT_TABLE}
     WHERE source_system = '{SOURCE_SYSTEM}'
       AND active_flag = TRUE
-""").select("local_column_name").collect()
+""")
+    .select("local_column_name")
+    .collect()
+)
 
 approved_set = {row["local_column_name"] for row in already_approved}
 
@@ -126,33 +135,15 @@ pending_df.createOrReplaceTempView("source_cols_pending_mapping")
 
 # COMMAND ----------
 
-ai_sql = f"""
-SELECT
-  source_system,
-  source_table,
-  local_column_name,
-  local_data_type,
-  sample_values,
-  array_join(sample_values, '; ') AS sample_str,
-  ai_query(
-    '{ai_endpoint}',
-    CONCAT(
-      'You are a data harmonization expert. ',
-      'Map this source column to the best matching global English target column. ',
-      'Source column name: "', local_column_name, '". ',
-      'Data type: ', local_data_type, '. ',
-      'Sample values: ', array_join(sample_values, '; '), '. ',
-      'Context: {AI_CONTEXT} ',
-      'Valid global target columns: {global_cols_str}. ',
-      'Rules: prefer DIRECT for exact or near-exact matches, SEMANTIC_TRANSLATION for conceptual equivalents, DERIVED if computed from other fields, NO_MATCH if no safe mapping exists (e.g. technical metadata columns). ',
-      'Return ONLY a JSON object with no additional text: {{"global_column_name":"...","match_type":"DIRECT|SEMANTIC_TRANSLATION|DERIVED|NO_MATCH","rationale":"...","confidence":"HIGH|MEDIUM|LOW"}}'
-    )
-  ) AS ai_result
-FROM source_cols_pending_mapping
-"""
+ai_sql = build_ai_query_sql(
+    source_view="source_cols_pending_mapping",
+    llm_config=llm_config,
+    ai_context=AI_CONTEXT,
+    target_columns=global_cols_list,
+)
 
 raw_ai_df = spark.sql(ai_sql)
-print(f"AI query executed on {pending_count} columns via {ai_endpoint}.")
+print(f"AI query executed on {pending_count} columns via {llm_config.endpoint}.")
 
 # COMMAND ----------
 
@@ -160,17 +151,16 @@ print(f"AI query executed on {pending_count} columns via {ai_endpoint}.")
 
 # COMMAND ----------
 
-ai_response_schema = StructType([
-    StructField("global_column_name", StringType(), True),
-    StructField("match_type",         StringType(), True),
-    StructField("rationale",          StringType(), True),
-    StructField("confidence",         StringType(), True),
-])
+ai_response_schema = StructType(
+    [
+        StructField("global_column_name", StringType(), True),
+        StructField("match_type", StringType(), True),
+        StructField("rationale", StringType(), True),
+        StructField("confidence", StringType(), True),
+    ]
+)
 
-parsed_df = raw_ai_df.withColumn(
-    "ai_parsed",
-    F.from_json(F.col("ai_result"), ai_response_schema)
-).select(
+parsed_df = raw_ai_df.withColumn("ai_parsed", F.from_json(F.col("ai_result"), ai_response_schema)).select(
     F.col("source_system"),
     F.col("source_table"),
     F.col("local_column_name"),
@@ -180,10 +170,9 @@ parsed_df = raw_ai_df.withColumn(
     F.col("ai_parsed.match_type").alias("proposed_match_type"),
     F.col("ai_parsed.rationale").alias("mapping_rationale"),
     F.col("ai_parsed.confidence").alias("confidence"),
-    F.when(
-        F.col("ai_result").isNull() | F.col("ai_parsed.global_column_name").isNull(),
-        F.lit("AI_ERROR")
-    ).otherwise(F.lit(None).cast(StringType())).alias("ai_error_status"),
+    F.when(F.col("ai_result").isNull() | F.col("ai_parsed.global_column_name").isNull(), F.lit("AI_ERROR"))
+    .otherwise(F.lit(None).cast(StringType()))
+    .alias("ai_error_status"),
 )
 
 # COMMAND ----------
@@ -196,19 +185,18 @@ _now = _dt.datetime.utcnow()
 mandatory_col_list = list(MANDATORY_COLUMNS)
 
 enriched_df = (
-    parsed_df
-    .withColumn("review_status",            F.lit("PENDING"))
+    parsed_df.withColumn("review_status", F.lit("PENDING"))
     .withColumn("final_global_column_name", F.lit(None).cast(StringType()))
-    .withColumn("final_match_type",         F.lit(None).cast(StringType()))
-    .withColumn("mandatory_flag",           F.col("local_column_name").isin(mandatory_col_list))
-    .withColumn("reviewed_by",              F.lit(None).cast(StringType()))
-    .withColumn("reviewed_at",              F.lit(None).cast(TimestampType()))
-    .withColumn("review_comment",           F.lit(None).cast(StringType()))
-    .withColumn("app_decision_source",      F.lit(None).cast(StringType()))
-    .withColumn("created_at",              F.lit(_now).cast(TimestampType()))
-    .withColumn("updated_at",              F.lit(_now).cast(TimestampType()))
+    .withColumn("final_match_type", F.lit(None).cast(StringType()))
+    .withColumn("mandatory_flag", F.col("local_column_name").isin(mandatory_col_list))
+    .withColumn("reviewed_by", F.lit(None).cast(StringType()))
+    .withColumn("reviewed_at", F.lit(None).cast(TimestampType()))
+    .withColumn("review_comment", F.lit(None).cast(StringType()))
+    .withColumn("app_decision_source", F.lit(None).cast(StringType()))
+    .withColumn("created_at", F.lit(_now).cast(TimestampType()))
+    .withColumn("updated_at", F.lit(_now).cast(TimestampType()))
     .withColumn("proposed_global_data_type", F.lit(None).cast(StringType()))
-    .withColumn("candidate_id",            F.monotonically_increasing_id())
+    .withColumn("candidate_id", F.monotonically_increasing_id())
     .withColumnRenamed("sample_values", "local_sample_values")
 )
 
@@ -276,9 +264,14 @@ display(
     .where(F.col("source_system") == SOURCE_SYSTEM)
     .where(F.col("review_status") == "PENDING")
     .select(
-        "local_column_name", "local_data_type",
-        "proposed_global_column_name", "proposed_match_type",
-        "confidence", "ai_error_status", "mandatory_flag", "mapping_rationale"
+        "local_column_name",
+        "local_data_type",
+        "proposed_global_column_name",
+        "proposed_match_type",
+        "confidence",
+        "ai_error_status",
+        "mandatory_flag",
+        "mapping_rationale",
     )
     .orderBy(F.col("mandatory_flag").desc(), "local_column_name")
 )
@@ -311,39 +304,52 @@ low_conf_count = (
     .count()
 )
 
-# Token cost estimates (configurable in harmonization_config.yaml)
-_ai_cfg = _cfg.get("ai", {})
-est_prompt_per_col = _ai_cfg.get("estimated_prompt_tokens_per_column", 200.0)
-est_response_per_col = _ai_cfg.get("estimated_response_tokens_per_column", 80.0)
-est_eur_per_1k = _ai_cfg.get("estimated_eur_per_1k_tokens", 0.002)
+# Token cost estimates come from llm_config (sourced from harmonization_config.yaml).
+_cost_est = estimate_cost(pending_count, llm_config)
+est_prompt = _cost_est["prompt_tokens"]
+est_response = _cost_est["response_tokens"]
+est_cost_eur = _cost_est["cost"]
 
-est_prompt   = pending_count * est_prompt_per_col
-est_response = pending_count * est_response_per_col
-est_cost_eur = ((est_prompt + est_response) / 1000.0) * est_eur_per_1k
+usage_schema = StructType(
+    [
+        StructField("run_id", StringType(), False),
+        StructField("mapping_type", StringType(), True),
+        StructField("source_field_or_column", StringType(), True),
+        StructField("candidate_rows", LongType(), True),
+        StructField("success_rows", LongType(), True),
+        StructField("failed_rows", LongType(), True),
+        StructField("low_confidence_rows", LongType(), True),
+        StructField("estimated_prompt_units", DoubleType(), True),
+        StructField("estimated_response_units", DoubleType(), True),
+        StructField("estimated_cost_eur", DoubleType(), True),
+        StructField("recorded_at", TimestampType(), True),
+    ]
+)
 
-usage_schema = StructType([
-    StructField("run_id",                   StringType(),    False),
-    StructField("mapping_type",             StringType(),    True),
-    StructField("source_field_or_column",   StringType(),    True),
-    StructField("candidate_rows",           LongType(),      True),
-    StructField("success_rows",             LongType(),      True),
-    StructField("failed_rows",              LongType(),      True),
-    StructField("low_confidence_rows",      LongType(),      True),
-    StructField("estimated_prompt_units",   DoubleType(),    True),
-    StructField("estimated_response_units", DoubleType(),    True),
-    StructField("estimated_cost_eur",       DoubleType(),    True),
-    StructField("recorded_at",              TimestampType(), True),
-])
-
-usage_df = spark.createDataFrame([(
-    RUN_ID, "COLUMN", SOURCE_SYSTEM,
-    pending_count, success_count, error_count, low_conf_count,
-    est_prompt, est_response, est_cost_eur, _end,
-)], schema=usage_schema)
+usage_df = spark.createDataFrame(
+    [
+        (
+            RUN_ID,
+            "COLUMN",
+            SOURCE_SYSTEM,
+            pending_count,
+            success_count,
+            error_count,
+            low_conf_count,
+            est_prompt,
+            est_response,
+            est_cost_eur,
+            _end,
+        )
+    ],
+    schema=usage_schema,
+)
 
 usage_df.write.format("delta").mode("append").saveAsTable(USAGE_TABLE)
 
-print(f"AI usage: {success_count} success, {error_count} errors, {low_conf_count} low confidence, est. {est_cost_eur:.4f} EUR")
+print(
+    f"AI usage: {success_count} success, {error_count} errors, {low_conf_count} low confidence, est. cost {est_cost_eur:.4f}"
+)
 
 # COMMAND ----------
 
@@ -351,5 +357,13 @@ print(f"AI usage: {success_count} success, {error_count} errors, {low_conf_count
 
 # COMMAND ----------
 
-log_run_metric(spark, OPS_TABLE, RUN_ID, "ai_propose_column_mappings", "SUCCEEDED", _start, cand_count,
-               f"AI proposed mappings for {pending_count} columns. {success_count} success, {error_count} errors.")
+log_run_metric(
+    spark,
+    OPS_TABLE,
+    RUN_ID,
+    "ai_propose_column_mappings",
+    "SUCCEEDED",
+    _start,
+    cand_count,
+    f"AI proposed mappings for {pending_count} columns. {success_count} success, {error_count} errors.",
+)

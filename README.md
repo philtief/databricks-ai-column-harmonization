@@ -44,8 +44,8 @@ Raw Source Data (local columns, any language)
 
 ```bash
 # 1. Clone
-git clone https://github.com/philtief/databricks-column-harmonization.git
-cd databricks-column-harmonization
+git clone https://github.com/philtief/databricks-column-harmonization-dev.git
+cd databricks-column-harmonization-dev
 
 # 2. Edit your domain config
 # The shipped config/harmonization_config.yaml is a generic CRM starter.
@@ -169,6 +169,7 @@ The Streamlit app (`apps/column_mapping_review_app/`) runs as a Databricks App a
 After deploying, set these env vars in `app.yaml`:
 
 - `CATALOG_NAME` — your catalog
+- `SCHEMA_NAME` — your schema (must match the workflow's `schema_name` parameter)
 - `DATABRICKS_WAREHOUSE_ID` — SQL Warehouse ID
 - `WORKFLOW_JOB_ID` — Job ID (set after deploying the workflow)
 

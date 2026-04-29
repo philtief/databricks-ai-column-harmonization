@@ -19,11 +19,11 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog_name", "pt_catalog",        "Catalog Name")
-dbutils.widgets.text("schema_name",  "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("catalog_name", "pt_catalog", "Catalog Name")
+dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
-schema_name  = dbutils.widgets.get("schema_name").strip()
+schema_name = dbutils.widgets.get("schema_name").strip()
 DB = f"`{catalog_name}`.`{schema_name}`"
 
 print(f"Config: {DB}")
@@ -48,6 +48,7 @@ _start = _dt.datetime.utcnow()
 
 results = []
 
+
 def execute_ddl(label, sql):
     try:
         spark.sql(sql)
@@ -58,7 +59,10 @@ def execute_ddl(label, sql):
         print(f"  [ERR] {label}: {e}")
         raise
 
-execute_ddl("vw_pending_column_mappings", f"""
+
+execute_ddl(
+    "vw_pending_column_mappings",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_pending_column_mappings` AS
 SELECT
   candidate_id,
@@ -78,9 +82,12 @@ SELECT
 FROM {DB}.`column_mapping_candidates`
 WHERE review_status = 'PENDING'
 ORDER BY mandatory_flag DESC, confidence DESC, local_column_name
-""")
+""",
+)
 
-execute_ddl("vw_mapping_review_summary", f"""
+execute_ddl(
+    "vw_mapping_review_summary",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_mapping_review_summary` AS
 SELECT
   review_status,
@@ -90,9 +97,12 @@ SELECT
   SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
 FROM {DB}.`column_mapping_candidates`
 GROUP BY review_status, mandatory_flag, confidence
-""")
+""",
+)
 
-execute_ddl("vw_publish_readiness", f"""
+execute_ddl(
+    "vw_publish_readiness",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_publish_readiness` AS
 WITH mandatory AS (
   SELECT local_column_name AS mandatory_column_name,
@@ -108,9 +118,12 @@ WITH mandatory AS (
 )
 SELECT * FROM mandatory
 ORDER BY is_ready ASC, mandatory_column_name
-""")
+""",
+)
 
-execute_ddl("vw_column_mapping_low_conf", f"""
+execute_ddl(
+    "vw_column_mapping_low_conf",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_low_conf` AS
 SELECT
   candidate_id,
@@ -127,9 +140,12 @@ SELECT
 FROM {DB}.`column_mapping_candidates`
 WHERE UPPER(confidence) = 'LOW' OR ai_error_status IS NOT NULL
 ORDER BY mandatory_flag DESC, local_column_name
-""")
+""",
+)
 
-execute_ddl("vw_column_mapping_coverage", f"""
+execute_ddl(
+    "vw_column_mapping_coverage",
+    f"""
 CREATE OR REPLACE VIEW {DB}.`vw_column_mapping_coverage` AS
 SELECT
   g.global_column_name,
@@ -152,9 +168,12 @@ FROM {DB}.`global_target_columns` g
 LEFT JOIN {DB}.`column_mapping_candidates` c
   ON g.global_column_name = COALESCE(c.final_global_column_name, c.proposed_global_column_name)
 ORDER BY g.semantic_group, g.global_column_name
-""")
+""",
+)
 
-print(f"\nViews recreated: {sum(1 for r in results if r[0] == 'OK')} OK, {sum(1 for r in results if r[0] == 'ERROR')} ERROR")
+print(
+    f"\nViews recreated: {sum(1 for r in results if r[0] == 'OK')} OK, {sum(1 for r in results if r[0] == 'ERROR')} ERROR"
+)
 
 # COMMAND ----------
 
@@ -201,12 +220,20 @@ ORDER BY mandatory_flag DESC, review_status, local_column_name
 
 display(all_candidates_df)
 
-total_count   = all_candidates_df.count()
-pending_count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE review_status = 'PENDING'").collect()[0]["cnt"]
-approved_count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE review_status IN ('APPROVED','CORRECTED')").collect()[0]["cnt"]
-mandatory_pending = spark.sql(f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE mandatory_flag = TRUE AND review_status = 'PENDING'").collect()[0]["cnt"]
+total_count = all_candidates_df.count()
+pending_count = spark.sql(
+    f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE review_status = 'PENDING'"
+).collect()[0]["cnt"]
+approved_count = spark.sql(
+    f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE review_status IN ('APPROVED','CORRECTED')"
+).collect()[0]["cnt"]
+mandatory_pending = spark.sql(
+    f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE mandatory_flag = TRUE AND review_status = 'PENDING'"
+).collect()[0]["cnt"]
 
-print(f"Total: {total_count}, Pending: {pending_count}, Approved/Corrected: {approved_count}, Mandatory pending: {mandatory_pending}")
+print(
+    f"Total: {total_count}, Pending: {pending_count}, Approved/Corrected: {approved_count}, Mandatory pending: {mandatory_pending}"
+)
 
 # COMMAND ----------
 
@@ -222,5 +249,13 @@ display(spark.sql(f"SELECT * FROM {DB}.`vw_publish_readiness`"))
 
 # COMMAND ----------
 
-log_run_metric(spark, f"{DB}.`workflow_run_metrics`", RUN_ID, "prepare_app_review_views", "SUCCEEDED", _start, total_count,
-               f"Refreshed 5 review views. Total candidates: {total_count}. Pending: {pending_count}. Mandatory pending: {mandatory_pending}.")
+log_run_metric(
+    spark,
+    f"{DB}.`workflow_run_metrics`",
+    RUN_ID,
+    "prepare_app_review_views",
+    "SUCCEEDED",
+    _start,
+    total_count,
+    f"Refreshed 5 review views. Total candidates: {total_count}. Pending: {pending_count}. Mandatory pending: {mandatory_pending}.",
+)

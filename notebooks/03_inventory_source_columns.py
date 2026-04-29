@@ -18,20 +18,20 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog_name", "pt_catalog",        "Catalog Name")
-dbutils.widgets.text("schema_name",  "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("catalog_name", "pt_catalog", "Catalog Name")
+dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
-schema_name  = dbutils.widgets.get("schema_name").strip()
+schema_name = dbutils.widgets.get("schema_name").strip()
 
-DB            = f"`{catalog_name}`.`{schema_name}`"
-_cfg          = load_harmonization_config()
-_refs         = get_table_refs(_cfg, DB)
-RAW_TABLE     = _refs["raw_table"]
-INV_TABLE     = _refs["inv_table"]
-OPS_TABLE     = _refs["ops_table"]
+DB = f"`{catalog_name}`.`{schema_name}`"
+_cfg = load_harmonization_config()
+_refs = get_table_refs(_cfg, DB)
+RAW_TABLE = _refs["raw_table"]
+INV_TABLE = _refs["inv_table"]
+OPS_TABLE = _refs["ops_table"]
 SOURCE_SYSTEM = _refs["source_system"]
-SOURCE_TABLE  = _refs["source_table_name"]
+SOURCE_TABLE = _refs["source_table_name"]
 
 print(f"Config: {DB}")
 
@@ -43,11 +43,9 @@ print(f"Config: {DB}")
 
 import datetime as _dt
 from uuid import uuid4
+
 from pyspark.sql import functions as F
-from pyspark.sql.types import (
-    StructType, StructField,
-    StringType, IntegerType, BooleanType, TimestampType, ArrayType
-)
+from pyspark.sql.types import ArrayType, BooleanType, IntegerType, StringType, StructField, StructType, TimestampType
 
 RUN_ID = str(uuid4())
 
@@ -77,27 +75,22 @@ for ordinal, field in enumerate(raw_schema.fields, 1):
     is_nullable = field.nullable
 
     # Collect up to 5 non-null distinct values as strings
-    sample_vals_raw = (
-        raw_df
-        .select(F.col(col_name))
-        .where(F.col(col_name).isNotNull())
-        .distinct()
-        .limit(5)
-        .collect()
-    )
+    sample_vals_raw = raw_df.select(F.col(col_name)).where(F.col(col_name).isNotNull()).distinct().limit(5).collect()
     # Convert every value to string safely
     sample_values = [str(row[0]) for row in sample_vals_raw if row[0] is not None]
 
-    inventory_rows.append((
-        SOURCE_SYSTEM,
-        SOURCE_TABLE,
-        col_name,
-        dtype_str,
-        sample_values,
-        ordinal,
-        is_nullable,
-        _now,
-    ))
+    inventory_rows.append(
+        (
+            SOURCE_SYSTEM,
+            SOURCE_TABLE,
+            col_name,
+            dtype_str,
+            sample_values,
+            ordinal,
+            is_nullable,
+            _now,
+        )
+    )
 
 print(f"Collected inventory for {len(inventory_rows)} columns")
 
@@ -107,16 +100,18 @@ print(f"Collected inventory for {len(inventory_rows)} columns")
 
 # COMMAND ----------
 
-inv_schema = StructType([
-    StructField("source_system",     StringType(),              False),
-    StructField("source_table",      StringType(),              False),
-    StructField("local_column_name", StringType(),              False),
-    StructField("local_data_type",   StringType(),              True),
-    StructField("sample_values",     ArrayType(StringType()),   True),
-    StructField("ordinal_position",  IntegerType(),             True),
-    StructField("is_nullable",       BooleanType(),             True),
-    StructField("detected_at",       TimestampType(),           True),
-])
+inv_schema = StructType(
+    [
+        StructField("source_system", StringType(), False),
+        StructField("source_table", StringType(), False),
+        StructField("local_column_name", StringType(), False),
+        StructField("local_data_type", StringType(), True),
+        StructField("sample_values", ArrayType(StringType()), True),
+        StructField("ordinal_position", IntegerType(), True),
+        StructField("is_nullable", BooleanType(), True),
+        StructField("detected_at", TimestampType(), True),
+    ]
+)
 
 inv_df = spark.createDataFrame(inventory_rows, schema=inv_schema)
 inv_df.createOrReplaceTempView("_inv_staged")
@@ -179,5 +174,13 @@ display(
 
 # COMMAND ----------
 
-log_run_metric(spark, OPS_TABLE, RUN_ID, "inventory_source_columns", "SUCCEEDED", _now, final_count,
-               f"Inventoried {len(inventory_rows)} source columns from {SOURCE_SYSTEM}.{SOURCE_TABLE}. Total inventory rows: {final_count}.")
+log_run_metric(
+    spark,
+    OPS_TABLE,
+    RUN_ID,
+    "inventory_source_columns",
+    "SUCCEEDED",
+    _now,
+    final_count,
+    f"Inventoried {len(inventory_rows)} source columns from {SOURCE_SYSTEM}.{SOURCE_TABLE}. Total inventory rows: {final_count}.",
+)

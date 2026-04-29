@@ -21,22 +21,22 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog_name",    "pt_catalog",        "Catalog Name")
-dbutils.widgets.text("schema_name",     "harmonizing_agent", "Schema Name")
-dbutils.widgets.text("mapping_version", "v1",                "Mapping Version")
+dbutils.widgets.text("catalog_name", "pt_catalog", "Catalog Name")
+dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
 
-catalog_name    = dbutils.widgets.get("catalog_name").strip()
-schema_name     = dbutils.widgets.get("schema_name").strip()
+catalog_name = dbutils.widgets.get("catalog_name").strip()
+schema_name = dbutils.widgets.get("schema_name").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
-DB            = f"`{catalog_name}`.`{schema_name}`"
-_cfg          = load_harmonization_config()
-_refs         = get_table_refs(_cfg, DB)
-CAND_TABLE    = _refs["cand_table"]
-DICT_TABLE    = _refs["dict_table"]
-OPS_TABLE     = _refs["ops_table"]
+DB = f"`{catalog_name}`.`{schema_name}`"
+_cfg = load_harmonization_config()
+_refs = get_table_refs(_cfg, DB)
+CAND_TABLE = _refs["cand_table"]
+DICT_TABLE = _refs["dict_table"]
+OPS_TABLE = _refs["ops_table"]
 SOURCE_SYSTEM = _refs["source_system"]
-SOURCE_TABLE  = _refs["source_table_name"]
+SOURCE_TABLE = _refs["source_table_name"]
 
 print(f"Config: {DB}, version={mapping_version}")
 
@@ -48,6 +48,7 @@ print(f"Config: {DB}, version={mapping_version}")
 
 import datetime as _dt
 from uuid import uuid4
+
 from pyspark.sql import functions as F
 from pyspark.sql.types import TimestampType
 
@@ -95,9 +96,9 @@ print(f"Found {approved_count} APPROVED/CORRECTED candidates")
 # COMMAND ----------
 
 valid_mappings_df = approved_df.where(
-    F.col("global_column_name").isNotNull() &
-    (F.upper(F.col("global_column_name")) != "NO_MATCH") &
-    (F.col("global_column_name") != "")
+    F.col("global_column_name").isNotNull()
+    & (F.upper(F.col("global_column_name")) != "NO_MATCH")
+    & (F.col("global_column_name") != "")
 )
 
 excluded_count = approved_count - valid_mappings_df.count()
@@ -141,19 +142,26 @@ else:
 _now = _dt.datetime.utcnow()
 
 dict_staged_df = (
-    valid_mappings_df
-    .withColumn("approved_by",      F.coalesce(F.col("reviewed_by"), F.lit("system")))
-    .withColumn("approved_at",      F.coalesce(F.col("reviewed_at"), F.lit(_now).cast(TimestampType())))
-    .withColumn("mapping_version",  F.lit(mapping_version))
-    .withColumn("active_flag",      F.lit(True))
-    .withColumn("mapping_comment",  F.col("review_comment"))
-    .withColumn("created_at",       F.lit(_now).cast(TimestampType()))
-    .withColumn("updated_at",       F.lit(_now).cast(TimestampType()))
+    valid_mappings_df.withColumn("approved_by", F.coalesce(F.col("reviewed_by"), F.lit("system")))
+    .withColumn("approved_at", F.coalesce(F.col("reviewed_at"), F.lit(_now).cast(TimestampType())))
+    .withColumn("mapping_version", F.lit(mapping_version))
+    .withColumn("active_flag", F.lit(True))
+    .withColumn("mapping_comment", F.col("review_comment"))
+    .withColumn("created_at", F.lit(_now).cast(TimestampType()))
+    .withColumn("updated_at", F.lit(_now).cast(TimestampType()))
     .select(
-        "source_system", "source_table", "local_column_name",
-        "global_column_name", "match_type",
-        "approved_by", "approved_at", "mapping_version",
-        "active_flag", "mapping_comment", "created_at", "updated_at"
+        "source_system",
+        "source_table",
+        "local_column_name",
+        "global_column_name",
+        "match_type",
+        "approved_by",
+        "approved_at",
+        "mapping_version",
+        "active_flag",
+        "mapping_comment",
+        "created_at",
+        "updated_at",
     )
 )
 
@@ -244,5 +252,13 @@ print(f"Active dictionary entries: {active_count}")
 
 # COMMAND ----------
 
-log_run_metric(spark, OPS_TABLE, RUN_ID, "build_column_mapping_dictionary", "SUCCEEDED", _start, active_count,
-               f"Dictionary built with {active_count} active entries. Approved: {approved_count}, Excluded (NO_MATCH): {excluded_count}, Rejected: {rejected_count}. Version: {mapping_version}.")
+log_run_metric(
+    spark,
+    OPS_TABLE,
+    RUN_ID,
+    "build_column_mapping_dictionary",
+    "SUCCEEDED",
+    _start,
+    active_count,
+    f"Dictionary built with {active_count} active entries. Approved: {approved_count}, Excluded (NO_MATCH): {excluded_count}, Rejected: {rejected_count}. Version: {mapping_version}.",
+)

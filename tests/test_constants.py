@@ -1,6 +1,6 @@
 """Tests for framework-level constants."""
 
-from harmonization.constants import MATCH_TYPE_OPTIONS, REVIEW_STATUSES, METADATA_COLUMNS
+from harmonization.constants import MATCH_TYPE_OPTIONS, METADATA_COLUMNS, REVIEW_STATUSES
 
 
 class TestMatchTypeOptions:

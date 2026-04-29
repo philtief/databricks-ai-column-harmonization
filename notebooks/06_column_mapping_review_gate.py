@@ -25,17 +25,17 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog_name", "pt_catalog",        "Catalog Name")
-dbutils.widgets.text("schema_name",  "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("catalog_name", "pt_catalog", "Catalog Name")
+dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
-schema_name  = dbutils.widgets.get("schema_name").strip()
+schema_name = dbutils.widgets.get("schema_name").strip()
 
-DB            = f"`{catalog_name}`.`{schema_name}`"
-_cfg          = load_harmonization_config()
-_refs         = get_table_refs(_cfg, DB)
-CAND_TABLE    = _refs["cand_table"]
-OPS_TABLE     = _refs["ops_table"]
+DB = f"`{catalog_name}`.`{schema_name}`"
+_cfg = load_harmonization_config()
+_refs = get_table_refs(_cfg, DB)
+CAND_TABLE = _refs["cand_table"]
+OPS_TABLE = _refs["ops_table"]
 SOURCE_SYSTEM = _refs["source_system"]
 MANDATORY_COLUMNS = _cfg["mandatory_source_columns"]
 
@@ -49,6 +49,7 @@ print(f"Config: {DB}")
 
 import datetime as _dt
 from uuid import uuid4
+
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
 
@@ -128,7 +129,9 @@ found_mandatory_cols = set(
 
 missing_mandatory = [c for c in MANDATORY_COLUMNS if c not in found_mandatory_cols]
 
-print(f"Mandatory PENDING: {len(pending_blocking)}, REJECTED no target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}")
+print(
+    f"Mandatory PENDING: {len(pending_blocking)}, REJECTED no target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}"
+)
 
 # COMMAND ----------
 
@@ -170,7 +173,9 @@ if blocking_count > 0:
 print(f"Gate decision: {gate_status}")
 
 if gate_status == "BLOCKED":
-    print(f"  BLOCKING: {len(pending_blocking)} PENDING, {len(rejected_blocking)} REJECTED no target, {len(missing_mandatory)} missing")
+    print(
+        f"  BLOCKING: {len(pending_blocking)} PENDING, {len(rejected_blocking)} REJECTED no target, {len(missing_mandatory)} missing"
+    )
 else:
     print("  All mandatory columns have an approved or corrected mapping.")
 
@@ -180,8 +185,16 @@ else:
 
 # COMMAND ----------
 
-log_run_metric(spark, OPS_TABLE, RUN_ID, "column_mapping_review_gate", gate_status, _start, blocking_count,
-               f"Gate {gate_status}. Blocking issues: {blocking_count}. Pending: {len(pending_blocking)}, Rejected-no-target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}.")
+log_run_metric(
+    spark,
+    OPS_TABLE,
+    RUN_ID,
+    "column_mapping_review_gate",
+    gate_status,
+    _start,
+    blocking_count,
+    f"Gate {gate_status}. Blocking issues: {blocking_count}. Pending: {len(pending_blocking)}, Rejected-no-target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}.",
+)
 
 # COMMAND ----------
 

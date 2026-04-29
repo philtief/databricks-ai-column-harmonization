@@ -22,24 +22,24 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog_name",    "pt_catalog",        "Catalog Name")
-dbutils.widgets.text("schema_name",     "harmonizing_agent", "Schema Name")
-dbutils.widgets.text("source_country",  "",                  "Source Country")
-dbutils.widgets.text("mapping_version", "v1",                "Mapping Version")
+dbutils.widgets.text("catalog_name", "pt_catalog", "Catalog Name")
+dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("source_country", "", "Source Country")
+dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
 
-catalog_name    = dbutils.widgets.get("catalog_name").strip()
-schema_name     = dbutils.widgets.get("schema_name").strip()
-source_country  = dbutils.widgets.get("source_country").strip()
+catalog_name = dbutils.widgets.get("catalog_name").strip()
+schema_name = dbutils.widgets.get("schema_name").strip()
+source_country = dbutils.widgets.get("source_country").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
-DB             = f"`{catalog_name}`.`{schema_name}`"
-_cfg           = load_harmonization_config()
-_refs          = get_table_refs(_cfg, DB)
-RAW_TABLE      = _refs["raw_table"]
-DICT_TABLE     = _refs["dict_table"]
-HARM_TABLE     = _refs["harm_table"]
-OPS_TABLE      = _refs["ops_table"]
-SOURCE_SYSTEM  = _refs["source_system"]
+DB = f"`{catalog_name}`.`{schema_name}`"
+_cfg = load_harmonization_config()
+_refs = get_table_refs(_cfg, DB)
+RAW_TABLE = _refs["raw_table"]
+DICT_TABLE = _refs["dict_table"]
+HARM_TABLE = _refs["harm_table"]
+OPS_TABLE = _refs["ops_table"]
+SOURCE_SYSTEM = _refs["source_system"]
 
 print(f"Config: {DB}")
 
@@ -51,6 +51,7 @@ print(f"Config: {DB}")
 
 import datetime as _dt
 from uuid import uuid4
+
 from pyspark.sql import functions as F
 
 RUN_ID = str(uuid4())
@@ -83,10 +84,7 @@ active_mappings = {row["local_column_name"]: row["global_column_name"] for row i
 print(f"Active mappings loaded: {len(active_mappings)}")
 
 if not active_mappings:
-    raise Exception(
-        "No active column mappings found in dictionary. "
-        "Run 07_build_column_mapping_dictionary first."
-    )
+    raise Exception("No active column mappings found in dictionary. Run 07_build_column_mapping_dictionary first.")
 
 # COMMAND ----------
 
@@ -136,16 +134,15 @@ harmonized_df = raw_df.select(select_exprs)
 
 # Add pipeline metadata columns
 harmonized_df = (
-    harmonized_df
-    .withColumn("source_country",         F.lit(source_country))
-    .withColumn("source_system",          F.lit(SOURCE_SYSTEM))
+    harmonized_df.withColumn("source_country", F.lit(source_country))
+    .withColumn("source_system", F.lit(SOURCE_SYSTEM))
     .withColumn("harmonization_timestamp", F.current_timestamp())
-    .withColumn("column_mapping_version",  F.lit(mapping_version))
-    .withColumn("mapping_status",          F.lit("APPROVED_COLUMN_MAPPING"))
+    .withColumn("column_mapping_version", F.lit(mapping_version))
+    .withColumn("mapping_status", F.lit("APPROVED_COLUMN_MAPPING"))
 )
 
 harm_count = harmonized_df.count()
-harm_cols  = harmonized_df.columns
+harm_cols = harmonized_df.columns
 
 print(f"Harmonized rows: {harm_count:,}, columns: {len(harm_cols)}")
 
@@ -155,14 +152,7 @@ print(f"Harmonized rows: {harm_count:,}, columns: {len(harm_cols)}")
 
 # COMMAND ----------
 
-(
-    harmonized_df
-    .write
-    .format("delta")
-    .mode("overwrite")
-    .option("overwriteSchema", "true")
-    .saveAsTable(HARM_TABLE)
-)
+(harmonized_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(HARM_TABLE))
 
 final_count = spark.table(HARM_TABLE).count()
 print(f"Written {final_count:,} rows to {HARM_TABLE}")
@@ -182,8 +172,13 @@ display(spark.table(HARM_TABLE).limit(5))
 # COMMAND ----------
 
 log_run_metric(
-    spark, OPS_TABLE, RUN_ID,
-    "apply_approved_column_mappings", "SUCCEEDED", _start, final_count,
+    spark,
+    OPS_TABLE,
+    RUN_ID,
+    "apply_approved_column_mappings",
+    "SUCCEEDED",
+    _start,
+    final_count,
     f"Applied {len(mapped_cols)} column mappings (version={mapping_version}) from {SOURCE_SYSTEM}. "
-    f"Wrote {final_count:,} rows to {HARM_TABLE}. Source country: {source_country}."
+    f"Wrote {final_count:,} rows to {HARM_TABLE}. Source country: {source_country}.",
 )

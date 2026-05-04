@@ -27,8 +27,8 @@ databricks current-user me
 The Spain demo creates 10k synthetic Spanish-language insurance rows and walks the entire workflow end-to-end. Use it to verify your setup before bringing real data.
 
 ```bash
-git clone https://github.com/philtief/databricks-column-harmonization-dev.git
-cd databricks-column-harmonization-dev
+git clone https://github.com/philtief/databricks-column-harmonization.git
+cd databricks-column-harmonization
 
 # Use the demo config
 cp examples/spain_demo/harmonization_config.yaml config/harmonization_config.yaml
@@ -58,8 +58,8 @@ The framework matches them with an LLM and a human reviewer in the loop.
 ### Step 1: Clone and Authenticate
 
 ```bash
-git clone https://github.com/philtief/databricks-column-harmonization-dev.git
-cd databricks-column-harmonization-dev
+git clone https://github.com/philtief/databricks-column-harmonization.git
+cd databricks-column-harmonization
 databricks auth login --host https://<workspace>.cloud.databricks.com
 databricks current-user me
 ```

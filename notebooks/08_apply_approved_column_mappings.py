@@ -22,7 +22,7 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
-dbutils.widgets.text("catalog_name", "pt_catalog", "Catalog Name")
+dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
 dbutils.widgets.text("source_country", "", "Source Country")
 dbutils.widgets.text("mapping_version", "v1", "Mapping Version")

@@ -15,10 +15,10 @@ command:
 
 env:
   - name: CATALOG_NAME
-    value: "agent_marketplace_catalog"
+    value: "your_catalog"
   - name: SCHEMA_NAME
-    value: "column_harmonization_test"
+    value: "harmonizing_agent"
   - name: DATABRICKS_WAREHOUSE_ID
-    value: "41754a8563a43a49"
+    value: "your_warehouse_id"
   - name: WORKFLOW_JOB_ID
-    value: "358353099383404"
+    value: "your_job_id"

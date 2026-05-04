@@ -16,7 +16,7 @@ from databricks.sdk.service.sql import StatementState
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-CATALOG = os.environ.get("CATALOG_NAME", "pt_catalog")
+CATALOG = os.environ.get("CATALOG_NAME", "your_catalog")
 SCHEMA = os.environ.get("SCHEMA_NAME", "harmonizing_agent")
 WAREHOUSE_ID = os.environ.get("DATABRICKS_WAREHOUSE_ID", "")
 WORKFLOW_JOB_ID = os.environ.get("WORKFLOW_JOB_ID", "")

@@ -42,6 +42,7 @@ databricks apps deploy column-mapping-review \
 
 Edit `app.yaml` and set:
 - `CATALOG_NAME`: your Unity Catalog catalog name
+- `SCHEMA_NAME`: your schema (must match the workflow's `schema_name` parameter)
 - `DATABRICKS_WAREHOUSE_ID`: your SQL Warehouse ID
 - `WORKFLOW_JOB_ID`: the job ID from deploying the workflow
 
@@ -54,7 +55,7 @@ export DATABRICKS_HOST=https://<your-workspace>.cloud.databricks.com
 export DATABRICKS_TOKEN=<your-pat-token>
 export DATABRICKS_WAREHOUSE_ID=<your-warehouse-id>
 export CATALOG_NAME=<your-catalog>
-export SCHEMA_NAME=harmonizing_agent
+export SCHEMA_NAME=harmonizing_agent  # must match the workflow's schema_name parameter and app.yaml
 
 streamlit run app.py
 ```

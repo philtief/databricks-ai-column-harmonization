@@ -44,8 +44,8 @@ Raw Source Data (local columns, any language)
 
 ```bash
 # 1. Clone
-git clone https://github.com/philtief/databricks-column-harmonization-dev.git
-cd databricks-column-harmonization-dev
+git clone https://github.com/philtief/databricks-column-harmonization.git
+cd databricks-column-harmonization
 
 # 2. Edit your domain config
 # The shipped config/harmonization_config.yaml is a generic CRM starter.

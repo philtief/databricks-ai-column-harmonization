@@ -2,7 +2,9 @@ bundle:
   name: column-mapping-to-global-model
 
 workspace:
-  profile: fe-vm-agent-marketplace
+  # Set this to the Databricks CLI profile that authenticates to your workspace.
+  # Or remove this block entirely and rely on DATABRICKS_HOST / DATABRICKS_TOKEN env vars.
+  # profile: your-profile-name
 
 targets:
   dev:
@@ -34,9 +36,9 @@ resources:
 
       parameters:
         - name: catalog_name
-          default: agent_marketplace_catalog
+          default: your_catalog
         - name: schema_name
-          default: column_harmonization_test
+          default: harmonizing_agent
         - name: source_country
           default: "Spain"
         - name: ai_endpoint

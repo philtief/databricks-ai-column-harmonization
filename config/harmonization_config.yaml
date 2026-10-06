@@ -42,6 +42,8 @@ sources:
       IT_PROPERTY_RAW.
 
 
+# Note: for categorical columns (semantic_group distribution, customer, risk) `examples` is the group
+# code list. Notebook 09 accepts a value translation only into this list.
 # --- Target data model (the "ground truth" the LLM maps into) -------------
 # Each column entry is shown to the LLM as a valid mapping target.
 # The 'description' field is especially important: it helps the LLM
@@ -85,7 +87,7 @@ target_model:
     - name: risk_type
       type: STRING
       description: "Category of insured risk"
-      examples: ["Fire", "Flood", "Theft", "Water Damage"]
+      examples: ["Fire", "Flood", "Theft", "Water Damage", "Electrical Damage", "Liability"]
       required: true
       semantic_group: risk
 
@@ -101,7 +103,7 @@ target_model:
     - name: distribution_channel
       type: STRING
       description: "Channel through which policy was sold"
-      examples: ["Agent", "Broker", "Direct", "Bancassurance"]
+      examples: ["Agent", "Broker", "Direct", "Bancassurance", "Digital"]
       required: true
       semantic_group: distribution
 
@@ -198,7 +200,7 @@ target_model:
     - name: customer_segment
       type: STRING
       description: "Segment classification of policyholder"
-      examples: ["Individual", "Small Business", "Large Enterprise"]
+      examples: ["Individual", "Small Business", "Medium Business", "Large Enterprise"]
       required: true
       semantic_group: customer
 
@@ -206,7 +208,7 @@ target_model:
     - name: risk_zone
       type: STRING
       description: "Risk zone classification"
-      examples: ["Zone A", "Zone B", "Zone C"]
+      examples: ["Zone A", "Zone B", "Zone C", "Zone D"]
       required: true
       semantic_group: risk
 

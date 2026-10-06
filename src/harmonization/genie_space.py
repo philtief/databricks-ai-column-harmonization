@@ -53,9 +53,9 @@ def build_serialized_space(cfg: dict[str, Any], catalog: str, schema: str) -> di
         {"id": _item_id({"question": [question]}), "question": [question]}
         for question in sorted(cfg["sample_questions"])
     ]
-    text_instructions = [
-        {"id": _item_id({"content": [content]}), "content": [content]} for content in cfg["text_instructions"]
-    ]
+    # The API allows one text-instruction item; its content is a list of paragraphs.
+    content = [f"{line}\n" for line in cfg["text_instructions"]]
+    text_instructions = [{"id": _item_id({"content": content}), "content": content}]
     example_sqls = [
         {
             "id": _item_id({"question": [item["question"]], "sql": _format_sql(item["sql"], catalog, schema)}),
@@ -64,6 +64,10 @@ def build_serialized_space(cfg: dict[str, Any], catalog: str, schema: str) -> di
         }
         for item in cfg["example_sqls"]
     ]
+    # The Genie API rejects id-keyed lists that are not sorted by id.
+    sample_questions, text_instructions, example_sqls = (
+        sorted(items, key=lambda item: item["id"]) for items in (sample_questions, text_instructions, example_sqls)
+    )
     return {
         "version": SPACE_VERSION,
         "config": {"sample_questions": sample_questions},

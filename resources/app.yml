@@ -1,4 +1,4 @@
-# Review app. The Genie space resource is attached after the space exists (scripts/finalize_app.sh).
+# Review app. The Genie space comes from scripts/genie_space.py; set var.genie_space_id to its id.
 resources:
   apps:
     review_app:
@@ -19,3 +19,8 @@ resources:
             branch: projects/${var.lakebase_project}/branches/production
             database: projects/${var.lakebase_project}/branches/production/databases/databricks-postgres
             permission: CAN_CONNECT_AND_CREATE
+        - name: genie-space
+          genie_space:
+            name: Halvard Group Property KPIs
+            space_id: ${var.genie_space_id}
+            permission: CAN_RUN

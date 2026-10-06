@@ -51,7 +51,9 @@ def test_build_serialized_space_matches_reference_shape():
     assert len(space["config"]["sample_questions"]) == 6
     assert all(HEX_32.match(item["id"]) for item in space["config"]["sample_questions"])
     assert all(isinstance(item["question"], list) for item in space["config"]["sample_questions"])
-    assert len(space["instructions"]["text_instructions"]) >= 5
+    # The API allows exactly one text-instruction item; every configured paragraph is in its content.
+    assert len(space["instructions"]["text_instructions"]) == 1
+    assert len(space["instructions"]["text_instructions"][0]["content"]) == len(cfg["text_instructions"])
     assert all(HEX_32.match(item["id"]) for item in space["instructions"]["text_instructions"])
     assert all(isinstance(item["content"], list) for item in space["instructions"]["text_instructions"])
     assert len(space["instructions"]["example_question_sqls"]) >= 3

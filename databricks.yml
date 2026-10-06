@@ -20,6 +20,9 @@ variables:
   lakebase_project:
     description: Lakebase Autoscaling project that holds the review workflow state.
     default: halvard-harmonization
+  genie_space_id:
+    description: Genie space created by scripts/genie_space.py (after the first publish creates the metric view).
+    default: 01f1c192d2f31c5bb935f924df7b1bd3
   privileged_principals:
     description: Comma-separated users/SPs that see every country through the row filter.
     default: ""

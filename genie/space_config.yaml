@@ -6,6 +6,7 @@ parent_path: /Users/<WORKSPACE_USER_NAME>
 tables:
   - harmonized_property_monthly
   - mv_group_property_kpis
+  - column_mapping_candidates
   - column_mapping_dictionary
   - data_quality_results
   - mapping_eval_results
@@ -14,6 +15,12 @@ text_instructions:
     This space supports Halvard Group Finance and actuarial reviewers with monthly property-insurance KPIs
     and reporting governance. Loss ratio is claims incurred divided by gross written premium (GWP).
   - All monetary amounts are in EUR. Country means the reporting subsidiary, not geography.
+  - >-
+    Country values are ISO codes: ES = Spain, IT = Italy (`Country` in the metric view, `source_country` in
+    harmonized_property_monthly). Source systems are ES_PROPERTY_RAW and IT_PROPERTY_RAW.
+  - >-
+    Review outcomes live in column_mapping_candidates.review_status: APPROVED means the AI proposal was accepted
+    without change, CORRECTED means a reviewer changed the target, REJECTED means the column is not mapped.
   - For KPI questions such as loss ratio, combined ratio, GWP, and written premium, use the metric view.
   - >-
     Query mv_group_property_kpis with metric names such as MEASURE(`Loss Ratio`) and
@@ -59,3 +66,9 @@ example_sqls:
       FROM `{{ catalog }}`.`{{ schema }}`.`column_mapping_dictionary`
       WHERE source_system = 'ES_PROPERTY_RAW'
         AND final_global_column_name = 'net_written_premium_eur'
+  - question: How many columns of the Italian feed were mapped by AI and approved without correction?
+    sql: |
+      SELECT review_status, COUNT(*) AS columns
+      FROM `{{ catalog }}`.`{{ schema }}`.`column_mapping_candidates`
+      WHERE source_system = 'IT_PROPERTY_RAW'
+      GROUP BY review_status

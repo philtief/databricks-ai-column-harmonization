@@ -19,6 +19,7 @@ TABLE_NAMES = {
     for name in (
         "harmonized_property_monthly",
         "mv_group_property_kpis",
+        "column_mapping_candidates",
         "column_mapping_dictionary",
         "data_quality_results",
         "mapping_eval_results",
@@ -30,7 +31,7 @@ def test_load_space_config_contains_required_content():
     cfg = load_space_config(CONFIG_PATH)
 
     assert cfg["title"] == "Halvard Group Property KPIs"
-    assert len(cfg["tables"]) == 5
+    assert len(cfg["tables"]) == 6
     assert len(cfg["sample_questions"]) == 6
     assert len(cfg["example_sqls"]) >= 3
     assert any("loss ratio" in instruction.lower() for instruction in cfg["text_instructions"])

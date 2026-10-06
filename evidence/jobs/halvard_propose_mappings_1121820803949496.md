@@ -3,7 +3,7 @@
 - State: SUCCESS
 - Started: 2026-10-06 13:56:55 UTC
 - Duration: 4.2 min
-- Parameters: `{"catalog_name": null, "schema_name": null, "source_country": "ES", "ai_endpoint": null, "mapping_version": null, "lakebase_endpoint": null, "app_name": null}`
+- Parameters: `{"catalog_name": "agent_marketplace_catalog", "schema_name": "halvard_harmonization", "source_country": "ES", "ai_endpoint": "databricks-claude-sonnet-4-6", "mapping_version": "v1", "lakebase_endpoint": "projects/halvard-harmonization/branches/production/endpoints/primary", "app_name": "halvard-harmonization-review"}`
 - URL: https://fevm-agent-marketplace.cloud.databricks.com/?o=7474653189849615#job/569290400156231/run/1121820803949496
 
 | Task | State | Minutes | Exit summary |

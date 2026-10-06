@@ -1,6 +1,6 @@
 # Pipeline ingest
 
-_Collected 2026-10-06 15:06 UTC by scripts/collect_evidence.py from workspace https://fevm-agent-marketplace.cloud.databricks.com._
+_Collected 2026-10-06 15:53 UTC by scripts/collect_evidence.py from workspace https://fevm-agent-marketplace.cloud.databricks.com._
 
 ## Rows per bronze table
 

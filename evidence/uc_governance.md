@@ -1,6 +1,6 @@
 # Uc governance
 
-_Collected 2026-10-06 15:06 UTC by scripts/collect_evidence.py from workspace https://fevm-agent-marketplace.cloud.databricks.com._
+_Collected 2026-10-06 15:53 UTC by scripts/collect_evidence.py from workspace https://fevm-agent-marketplace.cloud.databricks.com._
 
 ## Table tags
 
@@ -235,7 +235,7 @@ DESCRIBE FUNCTION EXTENDED agent_marketplace_catalog.halvard_harmonization.count
 |                spark.sql.parquet.compression.codec=snappy |
 |                spark.sql.path.enabled=false |
 |                spark.sql.photon.skipIndexForTextSearch.indexingBitmapAgg.forceSerializedOutput=false |
-|                spark.sql.photon.skipIndexForTextSearch.indexingBitmapAndAgg.enabled=true |
+|                spark.sql.photon.skipIndexForTextSearch.indexingBitmapAndAgg.enabled=false |
 |                spark.sql.pivot.emptyBucketReturnsAggregateDefault=false |
 |                spark.sql.readSideCharPadding=true |
 |                spark.sql.scripting.enabled=true |
@@ -276,7 +276,7 @@ DESCRIBE FUNCTION EXTENDED agent_marketplace_catalog.halvard_harmonization.count
 |                spark.sql.vectorIndex.optimization.enabledForCommands=false |
 |                spark.sql.windowExec.buffer.in.memory.size.threshold=-1 |
 | Owner:         philipp.tiefenbacher@databricks.com |
-| Create Time:   Tue Oct 06 14:30:03 UTC 2026 |
+| Create Time:   Tue Oct 06 15:38:27 UTC 2026 |
 | Body:          is_account_group_member('halvard-group-actuarial')  OR is_account_group_member(concat('halvard-steward-', lower(source_country))) OR current_user() IN ('philipp.tiefenbacher@databricks.com', '83b3161c-5563-4469-8548-7e4b979eeb1d') |
 
 ## Lineage (system.access.table_lineage)
@@ -290,6 +290,9 @@ SELECT DISTINCT source_table_full_name, target_table_full_name, entity_type FROM
 | agent_marketplace_catalog.halvard_harmonization.source_column_inventory | agent_marketplace_catalog.halvard_harmonization.column_mapping_candidates | JOB |
 | agent_marketplace_catalog.halvard_harmonization.column_mapping_candidates | agent_marketplace_catalog.halvard_harmonization.column_mapping_dictionary | JOB |
 | agent_marketplace_catalog.halvard_harmonization.bronze_property_monthly_es | agent_marketplace_catalog.halvard_harmonization.harmonized_property_monthly | JOB |
+| agent_marketplace_catalog.halvard_harmonization.bronze_property_monthly_it | agent_marketplace_catalog.halvard_harmonization.harmonized_property_monthly | JOB |
+| agent_marketplace_catalog.halvard_harmonization.harmonized_property_monthly | agent_marketplace_catalog.halvard_harmonization.harmonized_property_monthly | JOB |
+| agent_marketplace_catalog.halvard_harmonization.harmonized_property_monthly | agent_marketplace_catalog.halvard_harmonization.mv_group_property_kpis |  |
 | agent_marketplace_catalog.halvard_harmonization.column_mapping_candidates | agent_marketplace_catalog.halvard_harmonization.vw_column_mapping_coverage | JOB |
 | agent_marketplace_catalog.halvard_harmonization.global_target_columns | agent_marketplace_catalog.halvard_harmonization.vw_column_mapping_coverage | JOB |
 | agent_marketplace_catalog.halvard_harmonization.column_mapping_candidates | agent_marketplace_catalog.halvard_harmonization.vw_column_mapping_low_conf | JOB |

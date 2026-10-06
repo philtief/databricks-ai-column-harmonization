@@ -1,6 +1,6 @@
 # Ai mapping proposals
 
-_Collected 2026-10-06 15:06 UTC by scripts/collect_evidence.py from workspace https://fevm-agent-marketplace.cloud.databricks.com._
+_Collected 2026-10-06 15:53 UTC by scripts/collect_evidence.py from workspace https://fevm-agent-marketplace.cloud.databricks.com._
 
 ## Model proposals per country (before review)
 
@@ -34,30 +34,30 @@ SELECT source_system, local_column_name, proposed_global_column_name, proposed_m
 | ES_PROPERTY_RAW | segmento_cliente | customer_segment | SEMANTIC_TRANSLATION | HIGH | APPROVED | customer_segment | 'segmento_cliente' directly translates to 'customer segment' in English. The sample values (Particular, Pequeña Empresa, |
 | ES_PROPERTY_RAW | tipo_riesgo | risk_type | SEMANTIC_TRANSLATION | HIGH | APPROVED | risk_type | 'tipo_riesgo' directly translates from Spanish as 'type of risk', and the sample values (Inundación=Flood, Robo=Theft, D |
 | ES_PROPERTY_RAW | zona_riesgo | risk_zone | SEMANTIC_TRANSLATION | HIGH | APPROVED | risk_zone | 'zona_riesgo' directly translates from Spanish as 'risk zone', and the sample values (Zona A, Zona B, Zona C, Zona D) ar |
-| IT_PROPERTY_RAW | anno_riferimento | reporting_year | SEMANTIC_TRANSLATION | HIGH | PENDING |  | anno_riferimento is Italian for 'reference year', which is a direct conceptual equivalent of reporting_year. The sample  |
-| IT_PROPERTY_RAW | canale_distributivo | distribution_channel | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'canale_distributivo' is the Italian equivalent of 'distribution channel'. The sample values (Broker, Agente, Diretto, B |
-| IT_PROPERTY_RAW | codice_agenzia_interno | NO_MATCH | NO_MATCH | HIGH | PENDING |  | 'codice_agenzia_interno' translates from Italian as 'internal agency code', referring to an internal identifier for the  |
-| IT_PROPERTY_RAW | codice_polizza | policy_number | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'codice_polizza' is Italian for 'policy code/number' (codice = code/number, polizza = policy), which is the direct seman |
-| IT_PROPERTY_RAW | copertura_principale | primary_coverage | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'copertura_principale' is Italian for 'main/primary coverage', directly equivalent to the Spanish 'cobertura_principal'  |
-| IT_PROPERTY_RAW | costo_sinistri_lordo | gross_claims_incurred_eur | SEMANTIC_TRANSLATION | HIGH | PENDING |  | costo_sinistri_lordo translates directly from Italian as 'gross claims cost', which is the conceptual equivalent of gros |
-| IT_PROPERTY_RAW | id_riga | record_id | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'id_riga' translates from Italian as 'row ID' or 'line ID', which is a unique row/record identifier. This is semanticall |
-| IT_PROPERTY_RAW | mese_riferimento | reporting_month | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'mese_riferimento' is Italian for 'reference month', which is the conceptual equivalent of 'reporting_month'. The sample |
-| IT_PROPERTY_RAW | num_polizze_cancellate | cancelled_policies_count | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'num_polizze_cancellate' is Italian for 'number of cancelled policies'. This is the direct Italian equivalent of the pre |
-| IT_PROPERTY_RAW | num_polizze_nuove | new_policies_count | SEMANTIC_TRANSLATION | HIGH | PENDING |  | Italian 'num_polizze_nuove' directly translates to 'number of new policies'. 'Polizze' is the Italian plural for 'polici |
-| IT_PROPERTY_RAW | num_polizze_rinnovate | renewed_policies_count | SEMANTIC_TRANSLATION | HIGH | PENDING |  | The Italian column 'num_polizze_rinnovate' translates directly to 'number of renewed policies'. 'Polizze' means 'policie |
-| IT_PROPERTY_RAW | premi_lordi_contabilizzati | gross_written_premium_eur | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'premi_lordi_contabilizzati' translates directly from Italian as 'gross written premiums accounted/booked', which is the |
-| IT_PROPERTY_RAW | premi_netti | net_written_premium_eur | SEMANTIC_TRANSLATION | HIGH | PENDING |  | The Italian term 'premi_netti' directly translates to 'net premiums' or 'net written premium' in English. The sample val |
-| IT_PROPERTY_RAW | provvigioni | commissions_eur | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'Provvigioni' is the standard Italian term for commissions/agent fees, directly equivalent to 'comisiones' in Spanish wh |
-| IT_PROPERTY_RAW | rapporto_sinistri_premi | loss_ratio | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'rapporto_sinistri_premi' literally translates from Italian as 'claims-to-premium ratio', which is the definition of los |
-| IT_PROPERTY_RAW | regione | region | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'regione' is the Italian word for region, referring to Italian administrative regions (e.g. Sicilia, Puglia, Lombardia,  |
-| IT_PROPERTY_RAW | riserva_sinistri | claims_reserve_eur | SEMANTIC_TRANSLATION | HIGH | PENDING |  | Italian 'riserva_sinistri' directly translates to 'claims reserve' in English. 'Riserva' means reserve and 'sinistri' me |
-| IT_PROPERTY_RAW | segmento_cliente | customer_segment | DIRECT | HIGH | PENDING |  | 'segmento_cliente' is Italian for 'customer segment'. The sample values (Piccola Impresa, Privato, Grande Impresa, Media |
-| IT_PROPERTY_RAW | sinistri_denunciati | claims_reported_count | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'sinistri_denunciati' is Italian for 'claims reported/declared', which is the count of claims that have been notified/re |
-| IT_PROPERTY_RAW | sinistri_pagati | claims_paid_count | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'sinistri_pagati' is Italian for 'claims paid', directly equivalent to the count of paid claims. The sample values (2, 7 |
-| IT_PROPERTY_RAW | spese_gestione | management_expenses_eur | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'spese_gestione' is Italian for 'management expenses' (spese = expenses, gestione = management), directly equivalent to  |
-| IT_PROPERTY_RAW | tipo_rischio | risk_type | DIRECT | HIGH | PENDING |  | "tipo_rischio" is the Italian equivalent of "tipo_riesgo" (Spanish), both translating directly to "risk type" in English |
-| IT_PROPERTY_RAW | valuta | currency | SEMANTIC_TRANSLATION | HIGH | PENDING |  | 'valuta' is the Italian word for 'currency', directly equivalent to the Spanish 'moneda' which was previously approved a |
-| IT_PROPERTY_RAW | zona_rischio | risk_zone | DIRECT | HIGH | PENDING |  | 'zona_rischio' is the Italian equivalent of 'zona_riesgo' (Spanish), both meaning 'risk zone'. The previously approved m |
+| IT_PROPERTY_RAW | anno_riferimento | reporting_year | SEMANTIC_TRANSLATION | HIGH | APPROVED | reporting_year | anno_riferimento is Italian for 'reference year', which is a direct conceptual equivalent of reporting_year. The sample  |
+| IT_PROPERTY_RAW | canale_distributivo | distribution_channel | SEMANTIC_TRANSLATION | HIGH | APPROVED | distribution_channel | 'canale_distributivo' is the Italian equivalent of 'distribution channel'. The sample values (Broker, Agente, Diretto, B |
+| IT_PROPERTY_RAW | codice_agenzia_interno | NO_MATCH | NO_MATCH | HIGH | REJECTED |  | 'codice_agenzia_interno' translates from Italian as 'internal agency code', referring to an internal identifier for the  |
+| IT_PROPERTY_RAW | codice_polizza | policy_number | SEMANTIC_TRANSLATION | HIGH | APPROVED | policy_number | 'codice_polizza' is Italian for 'policy code/number' (codice = code/number, polizza = policy), which is the direct seman |
+| IT_PROPERTY_RAW | copertura_principale | primary_coverage | SEMANTIC_TRANSLATION | HIGH | APPROVED | primary_coverage | 'copertura_principale' is Italian for 'main/primary coverage', directly equivalent to the Spanish 'cobertura_principal'  |
+| IT_PROPERTY_RAW | costo_sinistri_lordo | gross_claims_incurred_eur | SEMANTIC_TRANSLATION | HIGH | APPROVED | gross_claims_incurred_eur | costo_sinistri_lordo translates directly from Italian as 'gross claims cost', which is the conceptual equivalent of gros |
+| IT_PROPERTY_RAW | id_riga | record_id | SEMANTIC_TRANSLATION | HIGH | APPROVED | record_id | 'id_riga' translates from Italian as 'row ID' or 'line ID', which is a unique row/record identifier. This is semanticall |
+| IT_PROPERTY_RAW | mese_riferimento | reporting_month | SEMANTIC_TRANSLATION | HIGH | APPROVED | reporting_month | 'mese_riferimento' is Italian for 'reference month', which is the conceptual equivalent of 'reporting_month'. The sample |
+| IT_PROPERTY_RAW | num_polizze_cancellate | cancelled_policies_count | SEMANTIC_TRANSLATION | HIGH | APPROVED | cancelled_policies_count | 'num_polizze_cancellate' is Italian for 'number of cancelled policies'. This is the direct Italian equivalent of the pre |
+| IT_PROPERTY_RAW | num_polizze_nuove | new_policies_count | SEMANTIC_TRANSLATION | HIGH | APPROVED | new_policies_count | Italian 'num_polizze_nuove' directly translates to 'number of new policies'. 'Polizze' is the Italian plural for 'polici |
+| IT_PROPERTY_RAW | num_polizze_rinnovate | renewed_policies_count | SEMANTIC_TRANSLATION | HIGH | APPROVED | renewed_policies_count | The Italian column 'num_polizze_rinnovate' translates directly to 'number of renewed policies'. 'Polizze' means 'policie |
+| IT_PROPERTY_RAW | premi_lordi_contabilizzati | gross_written_premium_eur | SEMANTIC_TRANSLATION | HIGH | APPROVED | gross_written_premium_eur | 'premi_lordi_contabilizzati' translates directly from Italian as 'gross written premiums accounted/booked', which is the |
+| IT_PROPERTY_RAW | premi_netti | net_written_premium_eur | SEMANTIC_TRANSLATION | HIGH | APPROVED | net_written_premium_eur | The Italian term 'premi_netti' directly translates to 'net premiums' or 'net written premium' in English. The sample val |
+| IT_PROPERTY_RAW | provvigioni | commissions_eur | SEMANTIC_TRANSLATION | HIGH | APPROVED | commissions_eur | 'Provvigioni' is the standard Italian term for commissions/agent fees, directly equivalent to 'comisiones' in Spanish wh |
+| IT_PROPERTY_RAW | rapporto_sinistri_premi | loss_ratio | SEMANTIC_TRANSLATION | HIGH | APPROVED | loss_ratio | 'rapporto_sinistri_premi' literally translates from Italian as 'claims-to-premium ratio', which is the definition of los |
+| IT_PROPERTY_RAW | regione | region | SEMANTIC_TRANSLATION | HIGH | APPROVED | region | 'regione' is the Italian word for region, referring to Italian administrative regions (e.g. Sicilia, Puglia, Lombardia,  |
+| IT_PROPERTY_RAW | riserva_sinistri | claims_reserve_eur | SEMANTIC_TRANSLATION | HIGH | APPROVED | claims_reserve_eur | Italian 'riserva_sinistri' directly translates to 'claims reserve' in English. 'Riserva' means reserve and 'sinistri' me |
+| IT_PROPERTY_RAW | segmento_cliente | customer_segment | DIRECT | HIGH | APPROVED | customer_segment | 'segmento_cliente' is Italian for 'customer segment'. The sample values (Piccola Impresa, Privato, Grande Impresa, Media |
+| IT_PROPERTY_RAW | sinistri_denunciati | claims_reported_count | SEMANTIC_TRANSLATION | HIGH | APPROVED | claims_reported_count | 'sinistri_denunciati' is Italian for 'claims reported/declared', which is the count of claims that have been notified/re |
+| IT_PROPERTY_RAW | sinistri_pagati | claims_paid_count | SEMANTIC_TRANSLATION | HIGH | APPROVED | claims_paid_count | 'sinistri_pagati' is Italian for 'claims paid', directly equivalent to the count of paid claims. The sample values (2, 7 |
+| IT_PROPERTY_RAW | spese_gestione | management_expenses_eur | SEMANTIC_TRANSLATION | HIGH | APPROVED | management_expenses_eur | 'spese_gestione' is Italian for 'management expenses' (spese = expenses, gestione = management), directly equivalent to  |
+| IT_PROPERTY_RAW | tipo_rischio | risk_type | DIRECT | HIGH | APPROVED | risk_type | "tipo_rischio" is the Italian equivalent of "tipo_riesgo" (Spanish), both translating directly to "risk type" in English |
+| IT_PROPERTY_RAW | valuta | currency | SEMANTIC_TRANSLATION | HIGH | APPROVED | currency | 'valuta' is the Italian word for 'currency', directly equivalent to the Spanish 'moneda' which was previously approved a |
+| IT_PROPERTY_RAW | zona_rischio | risk_zone | DIRECT | HIGH | APPROVED | risk_zone | 'zona_rischio' is the Italian equivalent of 'zona_riesgo' (Spanish), both meaning 'risk zone'. The previously approved m |
 
 ## Model usage
 

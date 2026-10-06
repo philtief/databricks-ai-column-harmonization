@@ -41,6 +41,8 @@ if not lakebase_endpoint:
     raise ValueError("lakebase_endpoint must not be empty")
 
 DB = f"`{catalog_name}`.`{schema_name}`"
+from harmonization.config import get_mandatory_columns
+
 _cfg = load_harmonization_config()
 _refs = get_table_refs(_cfg, DB, source_country)
 CAND_TABLE = _refs["cand_table"]

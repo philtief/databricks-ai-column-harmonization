@@ -191,7 +191,9 @@ ai_response_schema = StructType(
     ]
 )
 
-parsed_df = raw_ai_df.withColumn("ai_parsed", F.from_json(F.col("ai_result"), ai_response_schema)).select(
+# Claude often wraps the JSON in a ```json fence; parse the outermost {...} object only.
+ai_json = F.regexp_extract(F.col("ai_result"), r"(?s)\{.*\}", 0)
+parsed_df = raw_ai_df.withColumn("ai_parsed", F.from_json(ai_json, ai_response_schema)).select(
     F.col("source_system"),
     F.col("source_table"),
     F.col("local_column_name"),

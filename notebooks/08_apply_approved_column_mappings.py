@@ -142,7 +142,7 @@ target_columns = _cfg["target_model"]["columns"]
 global_names = [column["name"] for column in target_columns]
 target_types = {column["name"]: column["type"] for column in target_columns}
 harmonized_df = raw_df.select(select_exprs)
-existing_global_columns = {expression.name for expression in harmonized_df.columns}
+existing_global_columns = set(harmonized_df.columns)
 for global_name in global_names:
     if global_name not in existing_global_columns:
         harmonized_df = harmonized_df.withColumn(global_name, F.lit(None).cast(target_types[global_name]))

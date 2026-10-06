@@ -69,17 +69,18 @@ def execute_ddl(label, sql):
 # COMMAND ----------
 
 # Raw table: NOT created here. The customer brings their own raw data.
-# For the demo, examples/spain_demo/01_generate_spain_raw_data.py creates it.
+# The Lakeflow pipeline writes the bronze tables (pipelines/ingest_country_feeds.py).
 
 # Harmonized table: generated dynamically from config target_model
+from harmonization.governance import sql_str
+
 _target_table = _cfg["target_model"]["table_name"]
 
 _col_defs = []
 for _col in _cfg["target_model"]["columns"]:
     _col_name = _col["name"]
     _col_type = _col["type"]
-    _col_desc = _col["description"].replace("'", "''")
-    _col_defs.append(f"  `{_col_name}` {_col_type} COMMENT '{_col_desc}'")
+    _col_defs.append(f"  `{_col_name}` {_col_type} COMMENT {sql_str(_col['description'])}")
 
 # Pipeline metadata columns (always appended)
 _col_defs.extend(

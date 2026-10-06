@@ -56,6 +56,10 @@ resources:
           depends_on: [{task_key: ai_propose_column_mappings}]
           notebook_task:
             notebook_path: ../notebooks/05_prepare_app_review_views.py
+          # Known issue: the first Lakebase connect after %pip install psycopg in a fresh serverless
+          # environment sometimes aborts the Python process (SIGABRT); the retry always succeeded.
+          max_retries: 2
+          min_retry_interval_millis: 10000
         - task_key: evaluate_ai_proposals
           depends_on: [{task_key: ai_propose_column_mappings}]
           notebook_task:
@@ -87,6 +91,10 @@ resources:
         - task_key: column_mapping_review_gate
           notebook_task:
             notebook_path: ../notebooks/06_column_mapping_review_gate.py
+          # Known issue: the first Lakebase connect after %pip install psycopg in a fresh serverless
+          # environment sometimes aborts the Python process (SIGABRT); the retry always succeeded.
+          max_retries: 2
+          min_retry_interval_millis: 10000
         - task_key: build_column_mapping_dictionary
           depends_on: [{task_key: column_mapping_review_gate}]
           notebook_task:

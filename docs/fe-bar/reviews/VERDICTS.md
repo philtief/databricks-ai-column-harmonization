@@ -13,7 +13,7 @@ installed SDK, or a live query before acting.
 | notebooks | 3 | Gate passes a mandatory column that is approved without a target | Confirmed | Gate blocks any reviewed mandatory row with no target or `NO_MATCH` |
 | notebooks | 4 | Notebook 00 has no JSON exit | Confirmed | Added |
 | notebooks | 5 | Decision source relabelled `LAKEBASE_APP` | Confirmed | Uses the contract value `DATABRICKS_APP` |
-| notebooks | 6 | Usage metrics swap two columns | Rejected: the row order matches the table columns | none |
+| notebooks | 6 | Usage metrics swap two columns | First rejected (the row matches the table DDL). The live run then failed with `AXIS_LENGTH_MISMATCH`: the in-notebook `StructType` lacked `source_system`. The reviewer found a real misalignment and described its effect wrongly; the verdict compared the wrong schema | Added the field |
 | src | 1 | Same as notebooks #1 | Duplicate | see above |
 | src | 2 | Job-created Lakebase schema not usable by the app SP | Confirmed; already fixed in the commit after the review base | `ensure_schema(grant_to=...)` |
 | app/scripts | 1 | `genie_space.py` calls `model_dump()` on an SDK dataclass | Confirmed against the installed SDK | Rewrote SDK-only |

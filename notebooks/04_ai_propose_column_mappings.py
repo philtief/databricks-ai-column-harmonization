@@ -344,6 +344,7 @@ est_cost_eur = _cost_est["cost"]
 usage_schema = StructType(
     [
         StructField("run_id", StringType(), False),
+        StructField("source_system", StringType(), True),
         StructField("mapping_type", StringType(), True),
         StructField("source_field_or_column", StringType(), True),
         StructField("candidate_rows", LongType(), True),

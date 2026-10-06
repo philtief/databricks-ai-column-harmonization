@@ -159,7 +159,7 @@ def notebook_text(html: str) -> str:
 def job_run(w: WorkspaceClient, run_id: int) -> None:
     run = w.jobs.get_run(run_id)
     job = w.jobs.get(run.job_id).settings.name
-    params = {p.name: p.value for p in run.job_parameters or []}
+    params = {p.name: p.value or p.default for p in run.job_parameters or []}
     lines = [
         f"# {job} run {run_id}",
         "",

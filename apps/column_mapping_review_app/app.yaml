@@ -24,3 +24,6 @@ env:
     valueFrom: publish-job
   - name: GENIE_SPACE_ID
     valueFrom: genie-space
+  # The postgres resource injects PGHOST/PGDATABASE/PGUSER but not the endpoint path the token call needs.
+  - name: LAKEBASE_ENDPOINT
+    value: "projects/halvard-harmonization/branches/production/endpoints/primary"

@@ -88,11 +88,14 @@ def ensure_schema(conn: psycopg.Connection, grant_to: str | None = None) -> None
     Whoever runs first owns the schema; the grant lets the job and the app share it in either order.
     """
     statement = _ENSURE_SCHEMA_SQL.format(schema=sql.Identifier(SCHEMA))
-    with conn.cursor() as cursor:
-        cursor.execute(statement)
+    with conn.cursor(row_factory=tuple_row) as cursor:
+        # DDL only on first run: IF NOT EXISTS still needs CREATE/ownership, which a non-owner (the app) lacks.
+        cursor.execute("SELECT to_regclass(%s)", [f"{SCHEMA}.review_audit"])
+        if cursor.fetchone()[0] is None:
+            cursor.execute(statement)
         if grant_to:
             names = {"schema": sql.Identifier(SCHEMA), "role": sql.Identifier(grant_to)}
-            cursor.execute(sql.SQL("GRANT USAGE ON SCHEMA {schema} TO {role}").format(**names))
+            cursor.execute(sql.SQL("GRANT USAGE, CREATE ON SCHEMA {schema} TO {role}").format(**names))
             cursor.execute(
                 sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {schema} TO {role}").format(
                     **names

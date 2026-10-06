@@ -231,10 +231,20 @@ class TestReviewStore:
         with postgres_connection.cursor() as cursor:
             cursor.execute(
                 "SELECT has_table_privilege('app_sp_test', %s, 'INSERT') AS can_insert,"
+                " has_schema_privilege('app_sp_test', 'harmonization_review', 'CREATE') AS can_create,"
                 " has_sequence_privilege('app_sp_test', %s, 'USAGE') AS can_use_seq",
                 [f"{SCHEMA}.review_audit", f"{SCHEMA}.review_audit_audit_id_seq"],
             )
-            assert cursor.fetchone() == {"can_insert": True, "can_use_seq": True}
+            assert cursor.fetchone() == {"can_insert": True, "can_create": True, "can_use_seq": True}
+        # The app connects as that role and calls ensure_schema on startup: it must not need ownership.
+        with postgres_connection.cursor() as cursor:
+            cursor.execute("SET ROLE app_sp_test")
+        try:
+            ensure_schema(postgres_connection)
+        finally:
+            with postgres_connection.cursor() as cursor:
+                cursor.execute("RESET ROLE")
+            postgres_connection.commit()
 
     def test_upsert_inserts_and_updates_pending_row(self, postgres_connection):
         ensure_schema(postgres_connection)

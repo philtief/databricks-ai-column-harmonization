@@ -1,0 +1,55 @@
+version: 1.1
+source: "{catalog}.{schema}.harmonized_property_monthly"
+dimensions:
+  - name: Country
+    expr: source_country
+    comment: Country that submitted the insurance reporting data.
+  - name: Reporting Month
+    expr: reporting_month
+    comment: Month number used for the monthly reporting period.
+  - name: Distribution Channel
+    expr: distribution_channel
+    comment: Route through which insurance policies were sold.
+  - name: Customer Segment
+    expr: customer_segment
+    comment: Classification of the policyholder or customer.
+  - name: Risk Zone
+    expr: risk_zone
+    comment: Underwriting zone used to classify insured property risk.
+  - name: Region
+    expr: region
+    comment: Geographic region or province of the insured risk.
+measures:
+  - name: Gross Written Premium
+    expr: SUM(gross_written_premium_eur)
+    comment: Premium written before reinsurance.
+  - name: Net Written Premium
+    expr: SUM(net_written_premium_eur)
+    comment: Premium written after the effect of reinsurance.
+  - name: Gross Claims Incurred
+    expr: SUM(gross_claims_incurred_eur)
+    comment: Claims cost incurred before recoveries.
+  - name: Claims Reported
+    expr: SUM(claims_reported_count)
+    comment: Number of claims notified during the period.
+  - name: Claims Paid
+    expr: SUM(claims_paid_count)
+    comment: Number of claims settled and paid during the period.
+  - name: Commissions
+    expr: SUM(commissions_eur)
+    comment: Commissions paid to distribution partners.
+  - name: Management Expenses
+    expr: SUM(management_expenses_eur)
+    comment: Internal management expenses for the period.
+  - name: Loss Ratio
+    expr: SUM(gross_claims_incurred_eur) / NULLIF(SUM(gross_written_premium_eur), 0)
+    comment: Claims cost as a share of gross written premium.
+  - name: Expense Ratio
+    expr: (SUM(commissions_eur) + SUM(management_expenses_eur)) / NULLIF(SUM(gross_written_premium_eur), 0)
+    comment: Commissions and management expenses as a share of gross written premium.
+  - name: Combined Ratio
+    expr: (SUM(gross_claims_incurred_eur) + SUM(commissions_eur) + SUM(management_expenses_eur)) / NULLIF(SUM(gross_written_premium_eur), 0)
+    comment: Total claims and operating costs as a share of gross written premium.
+  - name: Policies In Force Change
+    expr: SUM(new_policies_count + renewed_policies_count - cancelled_policies_count)
+    comment: Net change in policies from new business, renewals, and cancellations.

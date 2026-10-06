@@ -223,6 +223,19 @@ class TestReviewStore:
             )
             assert cursor.fetchone() is not None
 
+    def test_ensure_schema_grants_app_role(self, postgres_connection):
+        with postgres_connection.cursor() as cursor:
+            cursor.execute("DROP ROLE IF EXISTS app_sp_test")
+            cursor.execute("CREATE ROLE app_sp_test")
+        ensure_schema(postgres_connection, grant_to="app_sp_test")
+        with postgres_connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT has_table_privilege('app_sp_test', %s, 'INSERT') AS can_insert,"
+                " has_sequence_privilege('app_sp_test', %s, 'USAGE') AS can_use_seq",
+                [f"{SCHEMA}.review_audit", f"{SCHEMA}.review_audit_audit_id_seq"],
+            )
+            assert cursor.fetchone() == {"can_insert": True, "can_use_seq": True}
+
     def test_upsert_inserts_and_updates_pending_row(self, postgres_connection):
         ensure_schema(postgres_connection)
         source = "INSERT_UPDATE"

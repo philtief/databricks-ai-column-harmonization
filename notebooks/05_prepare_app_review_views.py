@@ -31,12 +31,14 @@ dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
 dbutils.widgets.text("source_country", "ES", "Source Country")
 dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
 dbutils.widgets.text("lakebase_endpoint", "", "Lakebase Endpoint")
+dbutils.widgets.text("app_service_principal", "", "App service principal (Lakebase grant)")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
 source_country = dbutils.widgets.get("source_country").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 lakebase_endpoint = dbutils.widgets.get("lakebase_endpoint").strip()
+app_service_principal = dbutils.widgets.get("app_service_principal").strip()
 
 if not lakebase_endpoint:
     raise ValueError("lakebase_endpoint must not be empty")
@@ -239,7 +241,7 @@ queue_rows = [
 workspace_client = WorkspaceClient()
 conn = connect(workspace_client, lakebase_endpoint)
 try:
-    ensure_schema(conn)
+    ensure_schema(conn, grant_to=app_service_principal or None)
     rows_pushed = upsert_queue(conn, queue_rows)
     conn.commit()
     lakebase_status = status_summary(conn)

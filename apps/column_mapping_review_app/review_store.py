@@ -82,11 +82,24 @@ CREATE INDEX IF NOT EXISTS review_queue_review_status_idx
 """)
 
 
-def ensure_schema(conn: psycopg.Connection) -> None:
-    """Create the review schema, tables, and status index if needed."""
+def ensure_schema(conn: psycopg.Connection, grant_to: str | None = None) -> None:
+    """Create the review schema, tables, and status index if needed.
+
+    ``grant_to`` is a Postgres role (the app service principal's client ID) that gets read/write access.
+    Whoever runs first owns the schema; the grant lets the job and the app share it in either order.
+    """
     statement = _ENSURE_SCHEMA_SQL.format(schema=sql.Identifier(SCHEMA))
     with conn.cursor() as cursor:
         cursor.execute(statement)
+        if grant_to:
+            names = {"schema": sql.Identifier(SCHEMA), "role": sql.Identifier(grant_to)}
+            cursor.execute(sql.SQL("GRANT USAGE ON SCHEMA {schema} TO {role}").format(**names))
+            cursor.execute(
+                sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {schema} TO {role}").format(
+                    **names
+                )
+            )
+            cursor.execute(sql.SQL("GRANT USAGE ON ALL SEQUENCES IN SCHEMA {schema} TO {role}").format(**names))
     conn.commit()
 
 

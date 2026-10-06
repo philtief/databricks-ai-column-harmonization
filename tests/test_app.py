@@ -227,3 +227,21 @@ class TestModuleSync:
         generated = APP_STORE.read_text()
         assert generated.startswith(header)
         assert generated[len(header) :] == SOURCE_STORE.read_text()
+
+
+class TestOverviewHelpers:
+    def test_status_counts_sums_summary_counts(self):
+        app = _import_app()
+        summary = [
+            {"review_status": "APPROVED", "mandatory_flag": True, "count": 9},
+            {"review_status": "APPROVED", "mandatory_flag": False, "count": 14},
+            {"review_status": "REJECTED", "mandatory_flag": False, "count": 1},
+        ]
+        assert app.status_counts(summary)["APPROVED"] == 23
+        assert app.status_counts([{"review_status": "PENDING"}])["PENDING"] == 1
+
+    def test_kpi_formatting(self):
+        app = _import_app()
+        assert app.fmt_eur_m(41311921.58) == "€41.3M"
+        assert app.fmt_pct(0.6452) == "64.5%"
+        assert app.fmt_pct(None) == "—"

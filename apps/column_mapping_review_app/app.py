@@ -427,7 +427,8 @@ def status_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
     counts = {"APPROVED": 0, "CORRECTED": 0, "REJECTED": 0, "PENDING": 0}
     for row in rows:
         status = str(row.get("review_status", "")).upper()
-        counts[status] = counts.get(status, 0) + 1
+        # Queue rows count once; status_summary rows carry their own count.
+        counts[status] = counts.get(status, 0) + int(row.get("count", 1))
     return counts
 
 
@@ -464,6 +465,16 @@ def coerce_float(value: Any) -> float | None:
     return number
 
 
+def fmt_pct(value: Any) -> str:
+    number = coerce_float(value)
+    return "—" if number is None else f"{number:.1%}"
+
+
+def fmt_eur_m(value: Any) -> str:
+    number = coerce_float(value)
+    return "—" if number is None else f"€{number / 1e6:,.1f}M"
+
+
 def evaluation_metrics(rows: list[dict[str, Any]], source_system: str) -> dict[str, float]:
     """Return the latest numeric evaluation metrics for one source system."""
     metrics: dict[str, float] = {}
@@ -479,9 +490,10 @@ def evaluation_metrics(rows: list[dict[str, Any]], source_system: str) -> dict[s
 def get_current_user() -> str:
     """Resolve the current user from request headers or environment."""
     try:
-        user = st.context.headers.get("X-Forwarded-User", "")
-        if user:
-            return user
+        # X-Forwarded-User is a numeric id; the audit trail needs a readable identity.
+        for header in ("X-Forwarded-Email", "X-Forwarded-Preferred-Username", "X-Forwarded-User"):
+            if user := st.context.headers.get(header, ""):
+                return user
     except AttributeError:
         pass
     return os.environ.get("DATABRICKS_APP_CURRENT_USER_NAME", "app-service-principal")
@@ -539,15 +551,15 @@ def page_group_overview(country: str):
         country_kpis = kpis[kpis["Country"] == country] if "Country" in kpis.columns else kpis
         values = country_kpis.iloc[0] if not country_kpis.empty else pd.Series(dtype=object)
         kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
-        kpi_col1.metric("Gross Written Premium", values.get("gwp", "—"))
-        kpi_col2.metric("Loss Ratio", values.get("loss_ratio", "—"))
-        kpi_col3.metric("Combined Ratio", values.get("combined_ratio", "—"))
+        kpi_col1.metric("Gross Written Premium", fmt_eur_m(values.get("gwp")))
+        kpi_col2.metric("Loss Ratio", fmt_pct(values.get("loss_ratio")))
+        kpi_col3.metric("Combined Ratio", fmt_pct(values.get("combined_ratio")))
 
-    latest = evaluation_metrics(evaluations, source_system) if not evaluations.empty else {}
+    latest = evaluation_metrics(evaluations.to_dict("records"), source_system) if not evaluations.empty else {}
     if latest:
         eval_col1, eval_col2 = st.columns(2)
-        eval_col1.metric("Mapping Accuracy", latest.get("accuracy", "—"))
-        eval_col2.metric("Auto-Accept Rate", latest.get("auto_accept_rate", "—"))
+        eval_col1.metric("Mapping Accuracy", fmt_pct(latest.get("accuracy")))
+        eval_col2.metric("Auto-Accept Rate", fmt_pct(latest.get("auto_accept_rate")))
     else:
         st.info("Mapping evaluation results are not available yet.")
 
@@ -902,11 +914,9 @@ def main():
         st.markdown("**Review Status**")
         try:
             summary = filter_status_summary(load_review_summary(), COUNTRY_SOURCES[country])
-            for row in summary:
-                st.markdown(
-                    f"{status_indicator(row['review_status'])} &nbsp; **{row['count']}**",
-                    unsafe_allow_html=True,
-                )
+            for status, count in status_counts(summary).items():
+                if count:
+                    st.markdown(f"{status_indicator(status)} &nbsp; **{count}**", unsafe_allow_html=True)
             if not summary:
                 st.caption("No data available yet.")
         except Exception:

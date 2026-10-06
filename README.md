@@ -1,240 +1,93 @@
-# Column Harmonization on Databricks
+# Halvard Insurance Group: a new country feed in the group close in one working week, not six
 
-AI-powered column harmonization from local source schemas to a configurable global data model. A Databricks workflow uses an LLM to propose column mappings, then a Streamlit review app lets humans approve, correct, or reject each mapping before the harmonized output is created.
+Halvard (fictional) is a European property and casualty group with 14 country subsidiaries. Every month each
+subsidiary sends its reporting file in its own schema and language: `prima_bruta` in Spain,
+`premi_lordi_contabilizzati` in Italy. Group Finance and Group Actuarial map these files by hand into one English group
+model before they can report loss ratio, expense ratio, and combined ratio. A new or changed feed takes weeks of
+steward time, and a wrong mapping changes the reported numbers without any error.
 
-Bring your own raw dataset, your own target data model, and (optionally) your own prompt template. The framework handles the mapping, review, and transformation.
+This build makes that mapping a governed, AI-assisted workflow on Databricks. The model proposes every mapping. A
+data steward approves it in an app. The pipeline then publishes governed group KPIs that Finance can query in plain
+language. It ran end to end for Spain and Italy on synthetic data, and `evidence/` holds the run output as text.
 
-## Architecture
+**Industry anchor:** Databricks Insurance Outcome Map, *CFO & FP&A: Financial Projections & Reporting* (KPIs: loss
+ratio, expense ratio) and *Regulatory Compliance: Risk Management and Reporting*.
+
+## Results
+
+| What | Result | Evidence |
+|---|---|---|
+| Italy, raw files to governed group KPIs | about 9 minutes of compute (propose 4.5 min, publish 4.6 min) plus the review | `evidence/jobs/` |
+| Model proposals, descriptive column names | 24/24 correct for Spain and for Italy, including traps (net vs. gross premium, reported vs. paid claims) | `evidence/mapping_evaluation.md` |
+| Model proposals, legacy abbreviated names (stress test) | 18/24 correct; every HIGH-confidence proposal (12/12) correct; all 6 errors MEDIUM or LOW | `evidence/ablation_generic_context.md` |
+| Data quality on the harmonized table | 31/31 checks passed per country; 19/19 category values translated into the group code lists | `evidence/dq_results.md` |
+| Questions in natural language (Genie) | 6/6 answered with SQL | `evidence/genie_benchmark.md` |
+| Estimated value, base case (assumptions labelled) | EUR 160k per year less consolidation effort; 70% fewer steward hours per new feed | `docs/VALUE_MODEL.md` |
+
+The stress test is the reason for the human gate. Unreviewed, 6 of 24 mappings would have been wrong, among them
+commissions mapped to gross written premium. The confidence score separates the safe half from the half that
+needs a person.
+
+## The journey
 
 ```
-Raw Source Data (local columns, any language)
-        |
-        v
-+-----------------------------+
-|  AI Column Mapping Engine   |  <- ai_query() with a configurable LLM endpoint
-|  (proposes mappings with    |     and prompt template (config/harmonization_config.yaml)
-|   confidence scores)        |
-+-------------+---------------+
-              |
-              v
-+-----------------------------+
-|  Streamlit Review App       |  <- Reviewers approve, correct, or reject
-|  (deployed as a Databricks  |     each proposed mapping
-|   App)                      |
-+-------------+---------------+
-              |
-              v
-+-----------------------------+
-|  Apply & Validate           |  <- Approved mappings produce the harmonized
-|  (harmonized table +        |     table; quality checks (configurable)
-|   data quality results)     |     gate the workflow
-+-----------------------------+
+Country CSV files ──► Lakeflow pipeline (Auto Loader, expectations) ──► bronze tables, one per country
+                                                                              │
+             ai_query on Claude Sonnet 4.6 proposes a target per column ◄─────┘
+             MLflow logs accuracy against the answer key
+                                    │
+                                    ▼
+             Lakebase Postgres: review queue, decisions, audit trail
+                                    ▲
+             Databricks App: stewards approve / correct / reject, then press Publish
+                                    │
+                                    ▼
+             publish job: review gate ► dictionary ► harmonized_property_monthly ► value translation ► 31 DQ checks
+                                    │
+                                    ▼
+             Unity Catalog: tags, per-country row filter, grants, lineage, metric view mv_group_property_kpis
+                                    │
+                                    ▼
+             Genie space "Halvard Group Property KPIs", also embedded in the app
 ```
 
-## Prerequisites
+| Requirement | Where |
+|---|---|
+| Lakeflow: ingest raw data | `pipelines/ingest_country_feeds.py`, `resources/pipeline.yml`, `resources/jobs.yml` |
+| Unity Catalog: govern it | `notebooks/12_apply_governance.py`, `src/harmonization/governance.py`, `sql/mv_group_property_kpis.yaml` |
+| Lakebase: operational serving | `src/harmonization/review_store.py`, notebooks 05 and 06 |
+| Gen AI and ML | `notebooks/04_ai_propose_column_mappings.py`, `09_optional_value_mapping.py`, `11_evaluate_ai_proposals.py` |
+| Genie | `genie/space_config.yaml`, `scripts/genie_space.py`, `scripts/genie_benchmark.py` |
+| Databricks App | `apps/column_mapping_review_app/` |
 
-- Databricks workspace with Unity Catalog enabled (Runtime 13.0+)
-- SQL Warehouse (Serverless recommended)
-- Databricks CLI configured (`databricks auth login`)
-- A catalog you have `CREATE SCHEMA` permissions on (or an existing catalog)
-- Your raw source table already loaded into Databricks
-- Python 3.10+ (only needed for local lint/tests, not for deployment)
+## Documents
 
-## Quick Start
+- `docs/VALUE_MODEL.md`: measured inputs, labelled assumptions, low, base, and high cases.
+- `docs/DECISIONS.md`: ten decisions, each with the rejected alternative and its cost.
+- `docs/AI_BUILD_LOG.md`: how two AI models built and reviewed this, and every defect that review and live runs caught.
+- `docs/DEMO_SCRIPT.md`: tell-show-tell for the business and the technical persona, with objection handling.
+- `deck/DECK.md` and `deck/DECK.pdf`: the business presentation.
+- `docs/fe-bar/`: the build plan, the work-package briefs, and the code-review reports.
+- `docs/FRAMEWORK.md` and `docs/SETUP.md`: the underlying framework and how to adapt it to another domain.
+
+## Run it
+
+Prerequisites: Databricks CLI ≥ 0.294 with a profile, a catalog you can write to, a serverless SQL warehouse, and a
+Lakebase Autoscaling project (`databricks postgres create-project halvard-harmonization`).
 
 ```bash
-# 1. Clone
-git clone https://github.com/philtief/databricks-ai-column-harmonization.git
-cd databricks-ai-column-harmonization
-
-# 2. Edit your domain config
-# The shipped config/harmonization_config.yaml is a generic CRM starter.
-# Replace it with your own values, or copy from an example or template:
-#   cp config/harmonization_config.yaml.template config/harmonization_config.yaml
-
-# 3. Edit databricks.yml — set the catalog_name parameter
-
-# 4. Deploy and run
-databricks bundle deploy
-databricks bundle run Column_Mapping_To_Global_Model
+databricks bundle deploy                                                   # pipeline, two jobs, app
+databricks bundle run halvard_propose_mappings --params source_country=ES  # files -> proposals -> Lakebase queue
+python scripts/review_from_answer_key.py --country ES                     # or review in the app
+databricks bundle run halvard_publish_harmonized --params source_country=ES
+python scripts/genie_space.py --catalog <cat> --schema <schema> --warehouse-id <id>   # then set var.genie_space_id
+databricks bundle deploy && databricks bundle run review_app
+python scripts/collect_evidence.py --runs <run ids>
 ```
 
-For a step-by-step walkthrough — including how to bring your own local source schema and global target model — see [docs/SETUP.md](docs/SETUP.md).
+Then repeat propose, review (in the app), and Publish (the app's button) for `IT`.
 
-## Configuration: `config/harmonization_config.yaml`
+Tests: `bash scripts/lint.sh && bash scripts/test.sh` (231 tests; the Lakebase store tests run against a local
+Postgres 17).
 
-This is the single file you edit to adapt the solution to your domain.
-
-| Section | Purpose |
-|---------|---------|
-| `source_context` | Domain description fed to the LLM. Be specific about source language, business domain, and naming conventions. |
-| `target_model.columns` | Your global column definitions (name, type, description, examples). Each `description` is read by the LLM to find the best match. |
-| `mandatory_source_columns` | Source columns that must be reviewed before the workflow proceeds past the review gate. |
-| `semantic_fields` | Target fields eligible for optional value mapping (e.g., translating category values across languages). |
-| `ai` | LLM endpoint, optional custom prompt template, vocabularies, cost estimates. See *Customizing the LLM* below. |
-| `data_quality_rules` | Optional list of SQL-predicate constraints evaluated by notebook 10 against the harmonized table. |
-
-## Customizing the LLM
-
-All LLM knobs live in the `ai:` block. Sensible defaults are used when omitted.
-
-```yaml
-ai:
-  endpoint: "databricks-gpt-5-2"           # any Databricks Foundation Model endpoint
-
-  # Optional: full prompt template using ${name} placeholders.
-  # Static placeholders (substituted before the SQL is built):
-  #   ${context}            ${target_columns}   ${match_types}
-  #   ${confidence_levels}  ${response_schema}
-  # Dynamic placeholders (turned into SQL column references):
-  #   ${local_column_name}  ${local_data_type}  ${sample_values}
-  prompt_template: |
-    You are a data harmonization expert.
-    Source column "${local_column_name}" has type ${local_data_type}.
-    Sample values: ${sample_values}.
-    Domain context: ${context}.
-    Valid targets: ${target_columns}.
-    Match types: ${match_types}.
-    Return JSON: ${response_schema}
-
-  # Optional vocabulary overrides
-  match_types: ["DIRECT", "SEMANTIC_TRANSLATION", "DERIVED", "NO_MATCH"]
-  confidence_levels: ["HIGH", "MEDIUM", "LOW"]
-  response_keys: ["global_column_name", "match_type", "rationale", "confidence"]
-
-  # Optional extra placeholders accessible in prompt_template via ${key}
-  extra_context:
-    tone: "concise"
-    target_language: "English"
-
-  # Cost monitoring
-  estimated_prompt_tokens_per_column: 200
-  estimated_response_tokens_per_column: 80
-  estimated_cost_per_1k_tokens: 0.002
-```
-
-The runtime endpoint can also be overridden per job-run via the workflow's `ai_endpoint` widget.
-
-## Data Quality Rules
-
-Always-on checks run regardless of configuration:
-- `row_count_parity` — raw row count must equal harmonized row count
-- `column_mapping_coverage` — all `mandatory_source_columns` must have active dictionary entries
-- `not_null_<col>` — for every `required: true` target column
-- `column_mapping_version_present` — every harmonized row carries a recognized `mapping_status`
-
-Add domain-specific business rules in YAML:
-
-```yaml
-data_quality_rules:
-  - name: gross_gte_net
-    description: "gross_premium >= net_premium"
-    predicate: "gross_premium IS NOT NULL AND net_premium IS NOT NULL AND gross_premium < net_premium"
-    severity: FAILED   # or WARNING
-
-  - name: ratio_in_range
-    description: "ratio in [0, 1]"
-    predicate: "ratio IS NOT NULL AND (ratio < 0 OR ratio > 1)"
-    severity: WARNING
-```
-
-Predicates are SQL expressions: rows for which the predicate is `TRUE` are counted as violations.
-
-## Workflow Steps
-
-| Step | Notebook | Purpose |
-|------|----------|---------|
-| 00 | `bootstrap_catalog` | Create catalog and schema if missing |
-| 01 | `generate_demo_data` | *(Demo only)* Generate synthetic data. Remove for production. |
-| 02 | `create_global_model_and_control_tables` | Create harmonized table (from config), control tables, views |
-| 03 | `inventory_source_columns` | Catalog all source columns with metadata and sample values |
-| 04 | `ai_propose_column_mappings` | LLM proposes mappings via vectorized `ai_query()` |
-| 05 | `prepare_app_review_views` | Create review views for the Streamlit app |
-| 06 | `column_mapping_review_gate` | **Human gate** — pauses workflow until mandatory columns are approved |
-| 07 | `build_column_mapping_dictionary` | Build the final mapping dictionary from approved mappings |
-| 08 | `apply_approved_column_mappings` | Transform raw data into the harmonized table |
-| 09 | `optional_value_mapping` | Apply optional value-level translations |
-| 10 | `validate_and_monitor` | Run always-on + config-driven quality checks |
-
-## Review App
-
-The Streamlit app (`apps/column_mapping_review_app/`) runs as a Databricks App and lets reviewers:
-
-- See AI-proposed mappings with confidence scores (HIGH / MEDIUM / LOW)
-- Approve, reject, or override each mapping
-- Move approved mappings back to pending if needed
-- Track progress toward mandatory column coverage
-- Signal completion to unblock the workflow gate
-
-After deploying, set these env vars in `app.yaml`:
-
-- `CATALOG_NAME` — your catalog
-- `SCHEMA_NAME` — your schema (must match the workflow's `schema_name` parameter)
-- `DATABRICKS_WAREHOUSE_ID` — SQL Warehouse ID
-- `WORKFLOW_JOB_ID` — Job ID (set after deploying the workflow)
-
-## Project Structure
-
-```
-.
-├── databricks.yml                  # DAB definition (workflow + app)
-├── config/
-│   ├── harmonization_config.yaml   # Active config (generic starter by default)
-│   └── harmonization_config.yaml.template  # Placeholder template
-├── notebooks/                      # Workflow notebooks (00, 02-10) + _shared_utils
-├── examples/
-│   └── spain_demo/
-│       ├── 01_generate_spain_raw_data.py    # Synthetic data generator
-│       ├── harmonization_config.yaml         # Spain demo config
-│       └── README.md
-├── apps/column_mapping_review_app/ # Streamlit review app
-├── src/harmonization/              # Pure-Python testable modules
-│   ├── config.py                   # Config loader and getters
-│   ├── constants.py                # Framework constants
-│   ├── llm.py                      # Configurable prompt + ai_query SQL builder
-│   ├── tables.py                   # Table reference builder
-│   └── validation.py               # Generic data quality helpers
-├── tests/                          # pytest test suite
-├── scripts/                        # Lint and test wrappers
-└── pyproject.toml                  # Python project + ruff configuration
-```
-
-## Running the Spain Demo
-
-A Spain property-insurance demo is shipped under `examples/spain_demo/`. To try it:
-
-```bash
-# Use the demo's config (overwrites the generic starter)
-cp examples/spain_demo/harmonization_config.yaml config/harmonization_config.yaml
-
-# Set the catalog_name in databricks.yml, then deploy
-databricks bundle deploy
-databricks bundle run Column_Mapping_To_Global_Model
-```
-
-The `generate_demo_data` task creates 10k synthetic Spanish-language rows. Review mappings in the Streamlit app, then re-run the workflow to complete.
-
-See `examples/spain_demo/README.md` for details.
-
-## Development
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/ --cov=src --cov-report=term-missing
-
-# Run linting (ruff)
-bash scripts/lint.sh
-# or directly:
-ruff check src/ tests/ apps/ notebooks/ examples/
-ruff format --check src/ tests/ apps/
-```
-
-CI runs ruff + pytest with a minimum 80% coverage gate (see `.github/workflows/ci.yml`).
-
-## License
-
-Apache 2.0. See `LICENSE`.
+All data is synthetic. Halvard Insurance Group is fictional.

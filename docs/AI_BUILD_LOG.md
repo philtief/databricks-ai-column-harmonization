@@ -40,7 +40,7 @@ codex exec --skip-git-repo-check -m system.ai.glm-5-3-flash -s workspace-write -
 | 6 | Genie space as code, benchmark | GLM 5.3 Flash |
 | 7 | Multi-country notebooks, Lakebase wiring, value translation | GLM 5.3 Flash |
 | 8 | App on Lakebase, Overview, Publish, and Ask pages | GLM 5.3 Flash |
-| 9–11 | Bundle, deployment, evidence, documents | Claude |
+| 9 to 11 | Bundle, deployment, evidence, documents | Claude |
 
 ## Defects the review caught
 
@@ -84,3 +84,12 @@ Unit tests cannot catch platform behaviour. Each run below failed, and its run I
 | ES propose 3 | Claude wrapped 22 of 24 JSON answers in a ```` ```json ```` fence, so `from_json` returned null and the proposals counted as AI errors | `regexp_extract` of the outermost `{...}` before `from_json` |
 | ES propose 4 | The MLflow experiment path equalled the bundle root folder (the planner's brief prescribed it) | Renamed the experiment |
 | ES propose 4 | Notebook 05 aborted once (SIGABRT) right after `restartPython`; the automatic task retry succeeded | None; recorded |
+| ES publish 1 | Notebook 06 called `get_mandatory_columns` without importing it | Import; the lint gate now fails on undefined names in notebooks |
+| ES publish 2 | Notebook 08 read `.name` on `DataFrame.columns`, which are strings | `set(df.columns)` |
+| ES publish 3 | Notebook 09 used a Spark `Column` in an `if` | One `create_map` lookup instead of a `when` chain |
+| ES publish 3 | The group code lists missed values the feeds use (`Digital`, `Medium Business`, `Zone D`, two risk types), so KPIs by channel would mix languages | Completed the code lists in the config |
+| ES publish 3 | Workspace tag policies rejected `domain=property_insurance`, `layer=control`, `data_owner=…`, `business_owner=group_actuarial` (four repairs) | Tags that conform to the policies; a check of every tag against the policies |
+| Genie create | The API accepts one text instruction and requires id-sorted lists | Builder merges instructions and sorts by id |
+| Genie benchmark | Two of six answers were wrong: a filter on `'italy'` (data holds `IT`) and a guessed review status | Instructions for country codes and review status, the candidates table, one example SQL; 6/6 correct |
+| App start | `LAKEBASE_ENDPOINT` is not injected; the app SP could not run `CREATE ... IF NOT EXISTS` on a job-created schema | Env value in `app.yaml`; grant CREATE; DDL only on first run (tested under `SET ROLE`) |
+| App, first look | Overview counted summary rows (2 instead of 23); a DataFrame iterated as rows; numeric reviewer id; raw floats in KPI tiles; white-on-white dropdown | Fixed; tests for the count and format helpers |

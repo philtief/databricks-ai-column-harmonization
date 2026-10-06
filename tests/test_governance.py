@@ -135,8 +135,8 @@ class TestGovernancePlan:
         assert "COMMENT ON TABLE `cat`.`schema`.`bronze_property_monthly_es`" in joined_sqls
         assert "SET TAGS ('layer' = 'bronze')" in joined_sqls
         assert "COMMENT ON TABLE `cat`.`schema`.`harmonized_property_monthly`" in joined_sqls
-        assert "SET TAGS ('layer' = 'gold', 'domain' = 'property_insurance'" in joined_sqls
-        assert "SET TAGS ('layer' = 'control')" in joined_sqls
+        assert "SET TAGS ('layer' = 'gold', 'domain' = 'finance', 'line_of_business' = 'property'" in joined_sqls
+        assert "SET TAGS ('component' = 'control')" in joined_sqls
         assert "ALTER TABLE `cat`.`schema`.`mapping_eval_results`" in joined_sqls
         assert "ALTER TABLE `cat`.`schema`.`gross_written_premium_eur`" not in joined_sqls
         assert (

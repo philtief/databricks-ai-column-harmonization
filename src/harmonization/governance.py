@@ -131,7 +131,8 @@ def governance_plan(
 
     gold_tags = {
         "layer": "gold",
-        "domain": "property_insurance",
+        "domain": "finance",  # governed tag policy in the workspace: finance | sales | supply_chain | ...
+        "line_of_business": "property",
         "data_owner": "group_actuarial",
         "classification": "confidential",
     }
@@ -151,7 +152,8 @@ def governance_plan(
     for table_name in CONTROL_TABLES:
         control = f"{db}.{quote_ident(table_name)}"
         plan.append(("Comment control table", table_comment_sql(control, "Column harmonization control table")))
-        plan.append(("Tag control table", table_tags_sql(control, {"layer": "control"})))
+        # The workspace tag policy allows layer = bronze / silver / gold only.
+        plan.append(("Tag control table", table_tags_sql(control, {"component": "control"})))
 
     principals = _unique_principals([ADMIN_GROUP, *privileged_principals])
     plan.append(("Create country row-filter function", row_filter_function_sql(db, privileged_principals)))

@@ -87,6 +87,7 @@ def inject_custom_css():
             border-right: none;
         }}
         section[data-testid="stSidebar"] * {{ color: #FFFFFF !important; }}
+        section[data-testid="stSidebar"] [data-baseweb="select"] * {{ color: {TEXT_PRIMARY} !important; }}
         section[data-testid="stSidebar"] .stRadio label {{
             color: rgba(255, 255, 255, 0.85) !important;
             font-size: 0.95rem;

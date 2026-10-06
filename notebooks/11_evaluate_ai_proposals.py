@@ -48,7 +48,8 @@ _notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext
 _notebook_dir = "/".join(_notebook_path.rsplit("/", 1)[:-1])
 answer_key_path = f"/Workspace{_notebook_dir}/../examples/answer_keys/{cc}.json"
 workspace_user = _notebook_path.split("/")[2]
-experiment_path = f"/Users/{workspace_user}/halvard-column-harmonization"
+# Not the bundle root name: that folder already exists and MLflow cannot create an experiment over it.
+experiment_path = f"/Users/{workspace_user}/halvard-mapping-evaluation"
 
 print(f"Evaluating {source_system} using {answer_key_path}")
 

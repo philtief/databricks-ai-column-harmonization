@@ -62,3 +62,25 @@ Green tests did not mean correct code. These defects passed the implementer's ow
 Two of these defects (the Spanish period column and the Spanish-only mandatory list) came from the
 planner's own brief. The implementers flagged both instead of hiding them. That is the main reason for the
 `WP_NOTES.md` rule.
+
+## Code review by GLM 5.3 Flash
+
+After Stage B, four read-only reviews ran in parallel on GLM 5.3 Flash: three bug slices (`src/`, notebooks,
+app and scripts) and one ponytail pass for over-engineering. The briefs are `docs/fe-bar/tasks/REVIEW_*.md`.
+The raw reports and the verdict on each finding are in `docs/fe-bar/reviews/`. Of 15 bug findings, 12 were
+confirmed and fixed. The ponytail pass removed dead helpers, a duplicate set of views, and the REST fallbacks in
+the Genie scripts. Net code change: −706 / +372 lines.
+
+## Defects that only the live runs caught
+
+Unit tests cannot catch platform behaviour. Each run below failed, and its run ID is in `evidence/`.
+
+| Run | Defect | Fix |
+|---|---|---|
+| ES propose 1 | Notebook 02 altered tables before it created them (the GLM review predicted this) | Deleted the migration block |
+| ES propose 1 | Bundle cycle: the publish job referenced the app SP, and the app referenced the publish job | Jobs get the app name; notebooks resolve the SP with `w.apps.get` |
+| ES propose 2 | `databricks-claude-sonnet-5` is not enabled for `ai_query` batch inference | `databricks-claude-sonnet-4-6` |
+| ES propose 3 | Usage-metrics `StructType` lacked `source_system` (`AXIS_LENGTH_MISMATCH`). The GLM review had flagged this row, and the first verdict rejected the finding by comparing the wrong schema | Added the field; a static check compared every other `createDataFrame` site |
+| ES propose 3 | Claude wrapped 22 of 24 JSON answers in a ```` ```json ```` fence, so `from_json` returned null and the proposals counted as AI errors | `regexp_extract` of the outermost `{...}` before `from_json` |
+| ES propose 4 | The MLflow experiment path equalled the bundle root folder (the planner's brief prescribed it) | Renamed the experiment |
+| ES propose 4 | Notebook 05 aborted once (SIGABRT) right after `restartPython`; the automatic task retry succeeded | None; recorded |

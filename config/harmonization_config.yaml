@@ -8,25 +8,34 @@
 # After editing:  databricks bundle deploy && databricks bundle run Column_Mapping_To_Global_Model
 # ==========================================================================
 
-# --- Source context (fed to the LLM when proposing column mappings) --------
-source_context:
-  # Short domain label shown in logs and prompts
-  domain: "Spain property insurance monthly reporting"
-
-  # Identifier stored in control tables to distinguish this source
-  source_system: "ES_PROPERTY_RAW"
-
-  # Raw table name (created by notebook 01)
-  source_table: "property_insurance_monthly_raw"
-
-  # Full description passed to the LLM. Be specific: the more context the
-  # model has, the better the mapping quality. Mention the language of
-  # source columns, the business domain, and any naming conventions.
-  description: >
-    Monthly reporting data from Spain property insurance operations.
-    Source columns are in Spanish (e.g. prima_bruta = gross premium,
-    num_siniestros_declarados = claims reported). The target model uses
-    standardised English column names. Source system: ES_PROPERTY_RAW.
+# --- Source contexts (fed to the LLM when proposing column mappings) -------
+sources:
+  ES:
+    domain: "Spain property insurance monthly reporting"
+    source_system: "ES_PROPERTY_RAW"
+    source_table: "bronze_property_monthly_es"
+    description: >
+      Monthly reporting data from Spain property insurance operations.
+      Source columns are in Spanish (e.g. prima_bruta = gross written premium,
+      prima_neta = net written premium, num_siniestros_declarados = claims
+      reported, and num_siniestros_pagados = claims paid). Keep gross premium
+      separate from net premium, and reported claims separate from paid
+      claims. The target model uses standardised English column names.
+      Source system: ES_PROPERTY_RAW.
+  IT:
+    domain: "Italy property insurance monthly reporting"
+    source_system: "IT_PROPERTY_RAW"
+    source_table: "bronze_property_monthly_it"
+    description: >
+      Monthly reporting data from Italy property insurance operations.
+      Source columns are in Italian (e.g. premi_lordi_contabilizzati = gross
+      written premium, premi_netti = net written premium,
+      sinistri_denunciati = claims reported, sinistri_pagati = claims paid,
+      and rapporto_sinistri_premi = claims-to-premium ratio). Do not map net
+      premium to the gross-premium target, reported claims to paid claims, or
+      the supplied ratio to either underlying monetary amount. The target
+      model uses standardised English column names. Source system:
+      IT_PROPERTY_RAW.
 
 
 # --- Target data model (the "ground truth" the LLM maps into) -------------
@@ -34,7 +43,7 @@ source_context:
 # The 'description' field is especially important: it helps the LLM
 # distinguish between similarly named columns. Write it for an LLM reader.
 target_model:
-  table_name: "property_insurance_monthly"
+  table_name: "harmonized_property_monthly"
 
   columns:
     # -- Identity --

@@ -7,7 +7,8 @@ from typing import Any
 
 import yaml
 
-_REQUIRED_KEYS = {"source_context", "target_model", "mandatory_source_columns", "semantic_fields", "ai"}
+_REQUIRED_KEYS = {"sources", "target_model", "mandatory_source_columns", "semantic_fields", "ai"}
+_REQUIRED_SOURCE_KEYS = {"domain", "source_system", "source_table", "description"}
 _REQUIRED_COLUMN_KEYS = {"name", "type", "description"}
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -48,6 +49,18 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         if not _VALID_IDENTIFIER.match(col_name):
             raise ValueError(f"Column {i} has invalid name '{col_name}'. Use only letters, digits, and underscores.")
 
+    sources = config["sources"]
+    if not isinstance(sources, dict) or not sources:
+        raise ValueError("sources must be a non-empty object")
+    for country, context in sources.items():
+        if country != country.upper():
+            raise ValueError(f"Source '{country}' must use an uppercase country code")
+        if not isinstance(context, dict):
+            raise ValueError(f"Source '{country}' must be an object")
+        source_missing = _REQUIRED_SOURCE_KEYS - set(context.keys())
+        if source_missing:
+            raise ValueError(f"Source {country} missing keys: {sorted(source_missing)}")
+
     result: dict[str, Any] = config
     return result
 
@@ -85,21 +98,33 @@ def get_semantic_fields(config: dict) -> list[str]:
     return list(config["semantic_fields"])
 
 
-def get_ai_context(config: dict) -> str:
+def get_source_context(config: dict, country: str) -> dict:
+    """Return one country source context.
+
+    Raises:
+        KeyError: If the country is not configured.
+    """
+    sources = config["sources"]
+    if country not in sources:
+        raise KeyError(f"Unknown country '{country}'. Valid countries: {sorted(sources)}")
+    return sources[country]
+
+
+def get_ai_context(config: dict, country: str) -> str:
     """Return the source domain description for the AI prompt."""
-    result: str = config["source_context"]["description"].strip()
+    result: str = get_source_context(config, country)["description"].strip()
     return result
 
 
-def get_source_system(config: dict) -> str:
+def get_source_system(config: dict, country: str) -> str:
     """Return the source system identifier."""
-    result: str = config["source_context"]["source_system"]
+    result: str = get_source_context(config, country)["source_system"]
     return result
 
 
-def get_source_table(config: dict) -> str:
+def get_source_table(config: dict, country: str) -> str:
     """Return the raw source table name from config."""
-    result: str = config["source_context"]["source_table"]
+    result: str = get_source_context(config, country)["source_table"]
     return result
 
 

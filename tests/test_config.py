@@ -16,6 +16,7 @@ from harmonization.config import (
     get_ai_context,
     get_mandatory_columns,
     get_semantic_fields,
+    get_source_context,
     get_source_system,
     get_source_table,
     get_target_column_names,
@@ -27,11 +28,13 @@ from harmonization.config import (
 # A self-contained, valid config used to test the loader independently of
 # whatever YAML happens to ship in the repo's config/ folder.
 VALID_CONFIG: dict = {
-    "source_context": {
-        "domain": "Demo CRM",
-        "source_system": "DEMO_RAW",
-        "source_table": "demo_raw",
-        "description": "Demo customer contact records for testing.",
+    "sources": {
+        "DE": {
+            "domain": "Demo CRM Germany",
+            "source_system": "DEMO_RAW",
+            "source_table": "demo_raw",
+            "description": "Demo customer contact records for testing.",
+        },
     },
     "target_model": {
         "table_name": "demo_clean",
@@ -85,7 +88,7 @@ def shipped_config():
 
 class TestLoadConfig:
     def test_loads_minimal_valid_config(self, config):
-        assert "source_context" in config
+        assert "sources" in config
         assert "target_model" in config
         assert "mandatory_source_columns" in config
         assert "semantic_fields" in config
@@ -101,14 +104,40 @@ class TestLoadConfig:
 
     def test_raises_on_missing_keys(self, tmp_path):
         bad_config = tmp_path / "bad.yaml"
-        bad_config.write_text(yaml.dump({"source_context": {}}))
+        bad_config.write_text(yaml.dump({"sources": {}}))
         with pytest.raises(ValueError, match="missing required keys"):
+            load_config(str(bad_config))
+
+    def test_raises_on_empty_sources(self, tmp_path):
+        data = dict(VALID_CONFIG)
+        data["sources"] = {}
+        bad_config = tmp_path / "bad.yaml"
+        bad_config.write_text(yaml.dump(data))
+        with pytest.raises(ValueError, match="sources must be a non-empty object"):
+            load_config(str(bad_config))
+
+    def test_raises_on_lowercase_country_key(self, tmp_path):
+        data = dict(VALID_CONFIG)
+        data["sources"] = {"de": dict(data["sources"]["DE"])}
+        bad_config = tmp_path / "bad.yaml"
+        bad_config.write_text(yaml.dump(data))
+        with pytest.raises(ValueError, match="uppercase country code"):
+            load_config(str(bad_config))
+
+    def test_raises_on_missing_source_key(self, tmp_path):
+        data = dict(VALID_CONFIG)
+        incomplete = dict(data["sources"]["DE"])
+        del incomplete["source_table"]
+        data["sources"] = {"DE": incomplete}
+        bad_config = tmp_path / "bad.yaml"
+        bad_config.write_text(yaml.dump(data))
+        with pytest.raises(ValueError, match="Source DE missing keys"):
             load_config(str(bad_config))
 
     def test_raises_on_empty_columns(self, tmp_path):
         bad_config = tmp_path / "bad.yaml"
         data = {
-            "source_context": {},
+            "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {"columns": []},
             "mandatory_source_columns": [],
             "semantic_fields": [],
@@ -121,7 +150,7 @@ class TestLoadConfig:
     def test_raises_on_column_missing_keys(self, tmp_path):
         bad_config = tmp_path / "bad.yaml"
         data = {
-            "source_context": {},
+            "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {"columns": [{"name": "x"}]},
             "mandatory_source_columns": [],
             "semantic_fields": [],
@@ -134,7 +163,7 @@ class TestLoadConfig:
     def test_raises_on_invalid_column_name(self, tmp_path):
         bad_config = tmp_path / "bad.yaml"
         data = {
-            "source_context": {},
+            "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {"columns": [{"name": "bad-name", "type": "STRING", "description": "test"}]},
             "mandatory_source_columns": [],
             "semantic_fields": [],
@@ -147,7 +176,7 @@ class TestLoadConfig:
     def test_raises_on_column_name_starting_with_digit(self, tmp_path):
         bad_config = tmp_path / "bad.yaml"
         data = {
-            "source_context": {},
+            "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {"columns": [{"name": "1col", "type": "STRING", "description": "x"}]},
             "mandatory_source_columns": [],
             "semantic_fields": [],
@@ -175,7 +204,7 @@ class TestGetTargetColumns:
 
     def test_optional_fields_default_to_safe_values(self, tmp_path):
         cfg = {
-            "source_context": {},
+            "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {
                 "columns": [{"name": "x", "type": "STRING", "description": "y"}],
             },
@@ -228,28 +257,61 @@ class TestGetSemanticFields:
 
 class TestGetAiContext:
     def test_returns_non_empty_string(self, config):
-        ctx = get_ai_context(config)
+        ctx = get_ai_context(config, "DE")
         assert isinstance(ctx, str)
         assert len(ctx) > 5
 
     def test_strips_whitespace(self, tmp_path):
         cfg = dict(VALID_CONFIG)
-        cfg["source_context"] = dict(cfg["source_context"])
-        cfg["source_context"]["description"] = "  hello world  \n"
+        cfg["sources"] = {"DE": dict(cfg["sources"]["DE"])}
+        cfg["sources"]["DE"]["description"] = "  hello world  \n"
         p = tmp_path / "h.yaml"
         p.write_text(yaml.dump(cfg))
         loaded = load_config(str(p))
-        assert get_ai_context(loaded) == "hello world"
+        assert get_ai_context(loaded, "DE") == "hello world"
 
 
-class TestGetSourceSystem:
-    def test_returns_source_system(self, config):
-        assert get_source_system(config) == "DEMO_RAW"
+class TestGetSourceContext:
+    def test_returns_configured_country_context(self, config):
+        assert get_source_context(config, "DE") == {
+            "domain": "Demo CRM Germany",
+            "source_system": "DEMO_RAW",
+            "source_table": "demo_raw",
+            "description": "Demo customer contact records for testing.",
+        }
 
+    def test_returns_non_empty_context_for_each_country(self, tmp_path):
+        sources = {
+            "DE": {"domain": "D", "source_system": "DE_RAW", "source_table": "de_raw", "description": "German"},
+            "IT": {"domain": "D", "source_system": "IT_RAW", "source_table": "it_raw", "description": "Italian"},
+        }
+        cfg = dict(VALID_CONFIG)
+        cfg["sources"] = sources
+        p = tmp_path / "h.yaml"
+        p.write_text(yaml.dump(cfg))
+        loaded = load_config(str(p))
 
-class TestGetSourceTable:
-    def test_returns_source_table(self, config):
-        assert get_source_table(config) == "demo_raw"
+        assert get_source_system(loaded, "DE") == "DE_RAW"
+        assert get_source_table(loaded, "IT") == "it_raw"
+        assert get_ai_context(loaded, "IT") == "Italian"
+
+    def test_unknown_country_lists_valid_countries(self, config):
+        with pytest.raises(KeyError, match="Valid countries: \\['DE'\\]"):
+            get_source_context(config, "ES")
+
+    def test_shipped_context_has_both_countries(self, shipped_config):
+        assert set(get_source_context(shipped_config, "ES")) == {
+            "domain",
+            "source_system",
+            "source_table",
+            "description",
+        }
+        assert set(get_source_context(shipped_config, "IT")) == {
+            "domain",
+            "source_system",
+            "source_table",
+            "description",
+        }
 
 
 class TestGetTargetTable:

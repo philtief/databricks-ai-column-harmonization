@@ -1,0 +1,29 @@
+{
+  "source_system": "ES_PROPERTY_RAW",
+  "mappings": {
+    "id_registro": "record_id",
+    "anio": "reporting_year",
+    "mes": "reporting_month",
+    "codigo_poliza": "policy_number",
+    "tipo_riesgo": "risk_type",
+    "provincia": "region",
+    "canal_distribucion": "distribution_channel",
+    "prima_neta": "net_written_premium_eur",
+    "prima_bruta": "gross_written_premium_eur",
+    "num_polizas_nuevas": "new_policies_count",
+    "num_polizas_renovadas": "renewed_policies_count",
+    "num_polizas_canceladas": "cancelled_policies_count",
+    "num_siniestros_declarados": "claims_reported_count",
+    "num_siniestros_pagados": "claims_paid_count",
+    "importe_siniestros_bruto": "gross_claims_incurred_eur",
+    "importe_reservas": "claims_reserve_eur",
+    "gastos_gestion": "management_expenses_eur",
+    "comisiones": "commissions_eur",
+    "ratio_siniestralidad": "loss_ratio",
+    "segmento_cliente": "customer_segment",
+    "zona_riesgo": "risk_zone",
+    "cobertura_principal": "primary_coverage",
+    "moneda": "currency",
+    "fecha_carga": null
+  }
+}

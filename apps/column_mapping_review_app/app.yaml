@@ -15,10 +15,12 @@ command:
 
 env:
   - name: CATALOG_NAME
-    value: "your_catalog"
+    value: "agent_marketplace_catalog"
   - name: SCHEMA_NAME
-    value: "harmonizing_agent"
+    value: "halvard_harmonization"
   - name: DATABRICKS_WAREHOUSE_ID
-    value: "your_warehouse_id"
-  - name: WORKFLOW_JOB_ID
-    value: "your_job_id"
+    valueFrom: sql-warehouse
+  - name: PUBLISH_JOB_ID
+    valueFrom: publish-job
+  - name: GENIE_SPACE_ID
+    valueFrom: genie-space

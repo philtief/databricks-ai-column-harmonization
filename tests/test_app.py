@@ -1,29 +1,48 @@
-"""Tests for the Streamlit review app helper functions.
+"""Tests for the Streamlit review app helper functions."""
 
-These tests import only the pure-Python helpers from app.py by mocking
-streamlit and databricks.sdk at import time.
-"""
+from __future__ import annotations
 
+import importlib.util
+import os
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+ROOT = Path(__file__).resolve().parents[1]
+APP_DIR = ROOT / "apps" / "column_mapping_review_app"
+APP_PATH = APP_DIR / "app.py"
+SOURCE_STORE = ROOT / "src" / "harmonization" / "review_store.py"
+APP_STORE = APP_DIR / "review_store.py"
+
+
+class OperationalError(Exception):
+    """Test stand-in for psycopg.OperationalError."""
+
 
 @pytest.fixture(autouse=True)
 def mock_streamlit_and_sdk():
-    """Mock streamlit and databricks.sdk so app.py can be imported without them installed."""
+    """Mock Streamlit and SDK imports so app helpers load without app runtime."""
     mock_st = MagicMock()
-    mock_st.cache_resource = lambda **kwargs: lambda f: f
-    mock_st.cache_data = lambda **kwargs: lambda f: f
+    mock_st.cache_resource = lambda **kwargs: lambda function: function
+    mock_st.cache_data = lambda **kwargs: lambda function: function
+    mock_st.context = MagicMock()
+    mock_st.context.headers = {}
 
     mock_sdk = MagicMock()
-    mock_state_enum = MagicMock()
-    mock_state_enum.SUCCEEDED = "SUCCEEDED"
-    mock_state_enum.FAILED = "FAILED"
-    mock_state_enum.CANCELED = "CANCELED"
-    mock_state_enum.CLOSED = "CLOSED"
-    mock_sdk.service.sql.StatementState = mock_state_enum
+    mock_state = MagicMock()
+    mock_state.SUCCEEDED = "SUCCEEDED"
+    mock_state.FAILED = "FAILED"
+    mock_state.CANCELED = "CANCELED"
+    mock_state.CLOSED = "CLOSED"
+    mock_sdk.service.sql.StatementState = mock_state
+
+    mock_psycopg = MagicMock()
+    mock_psycopg.OperationalError = OperationalError
+    mock_review_store = MagicMock()
+    mock_review_store.psycopg = mock_psycopg
 
     mock_pd = MagicMock()
     mock_pd.DataFrame = MagicMock
@@ -36,79 +55,164 @@ def mock_streamlit_and_sdk():
         "databricks.sdk": mock_sdk,
         "databricks.sdk.service": MagicMock(),
         "databricks.sdk.service.sql": mock_sdk.service.sql,
+        "psycopg": mock_psycopg,
+        "psycopg.rows": MagicMock(),
+        "psycopg.sql": MagicMock(),
+        "review_store": mock_review_store,
     }
-
+    sys.path.insert(0, str(APP_DIR))
     with patch.dict(sys.modules, modules):
-        # Remove cached import if any
-        if "apps.column_mapping_review_app.app" in sys.modules:
-            del sys.modules["apps.column_mapping_review_app.app"]
-        yield mock_st, mock_sdk
+        sys.modules.pop("app", None)
+        yield mock_st, mock_review_store
+    sys.path.remove(str(APP_DIR))
+    sys.modules.pop("app", None)
 
 
 def _import_app():
-    """Import app module after mocks are in place."""
-    sys.path.insert(0, ".")
-    try:
-        # Import the module directly
-        import importlib.util
+    """Import app.py with the app folder available for its local review_store import."""
+    spec = importlib.util.spec_from_file_location("app", APP_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-        spec = importlib.util.spec_from_file_location(
-            "app",
-            "apps/column_mapping_review_app/app.py",
+
+class TestCountryAndPublishRules:
+    def test_country_mapping(self):
+        app = _import_app()
+        assert app.COUNTRY_SOURCES == {"ES": "ES_PROPERTY_RAW", "IT": "IT_PROPERTY_RAW"}
+
+    def test_publish_disabled_while_mandatory_column_is_pending(self):
+        app = _import_app()
+        rows = [
+            {"mandatory_flag": True, "review_status": "PENDING"},
+            {"mandatory_flag": False, "review_status": "PENDING"},
+        ]
+        assert app.publish_is_ready(rows) is False
+
+    def test_publish_enabled_when_mandatory_columns_are_resolved(self):
+        app = _import_app()
+        rows = [
+            {"mandatory_flag": True, "review_status": "APPROVED"},
+            {"mandatory_flag": True, "review_status": "CORRECTED"},
+            {"mandatory_flag": False, "review_status": "PENDING"},
+        ]
+        assert app.publish_is_ready(rows) is True
+
+
+class TestReviewActions:
+    def test_record_action_calls_store_with_app_source(self):
+        app = _import_app()
+        connection = MagicMock()
+        app.review_store.record_decision = MagicMock(return_value=True)
+
+        result = app._record_review_action(
+            connection,
+            "ES_PROPERTY_RAW",
+            "prima_bruta",
+            "CORRECT",
+            "analyst@example.com",
+            final_global="gross_written_premium_eur",
+            final_match_type="SEMANTIC_TRANSLATION",
+            comment="Verified against source",
         )
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-    finally:
-        sys.path.pop(0)
 
+        assert result is True
+        app.review_store.record_decision.assert_called_once_with(
+            connection,
+            "ES_PROPERTY_RAW",
+            "prima_bruta",
+            "CORRECT",
+            "analyst@example.com",
+            final_global="gross_written_premium_eur",
+            final_match_type="SEMANTIC_TRANSLATION",
+            comment="Verified against source",
+            source="DATABRICKS_APP",
+        )
 
-class TestEscapeFunction:
-    def test_escapes_single_quotes(self):
+    def test_connect_retries_operational_error_twice(self):
         app = _import_app()
-        assert app._esc("O'Brien") == "O''Brien"
+        connection = MagicMock()
+        app.review_store.connect = MagicMock(side_effect=[OperationalError(), OperationalError(), connection])
 
-    def test_none_returns_empty(self):
+        with (
+            patch.object(app, "WorkspaceClient", return_value=MagicMock()),
+            patch.object(app.time, "sleep") as sleep,
+            patch.dict(
+                os.environ,
+                {
+                    "LAKEBASE_ENDPOINT": "endpoint",
+                    "PGHOST": "host",
+                    "PGDATABASE": "database",
+                    "PGUSER": "user",
+                },
+            ),
+        ):
+            result = app.connect_review_store()
+
+        assert result is connection
+        assert app.review_store.connect.call_count == 3
+        assert [call.args[0] for call in sleep.call_args_list] == [1, 2]
+
+
+class TestGenieHelpers:
+    def test_extract_text_only_message(self):
         app = _import_app()
-        assert app._esc(None) == ""
+        message = SimpleNamespace(content="Gross written premium was 1.2m.", text=None, attachments=[])
+        assert app.extract_genie_answer(message) == {
+            "text": "Gross written premium was 1.2m.",
+            "sql": "",
+            "attachment_id": None,
+        }
 
-    def test_no_special_chars(self):
+    def test_extract_sql_attachment(self):
         app = _import_app()
-        assert app._esc("hello") == "hello"
+        message = SimpleNamespace(
+            content="Here is the query.",
+            text=None,
+            attachments=[SimpleNamespace(attachment_id="att-1", query="SELECT 1")],
+        )
+        assert app.extract_genie_answer(message) == {
+            "text": "Here is the query.",
+            "sql": "SELECT 1",
+            "attachment_id": "att-1",
+        }
 
-    def test_empty_string(self):
+    def test_extract_empty_message(self):
         app = _import_app()
-        assert app._esc("") == ""
+        message = SimpleNamespace(content=None, text=None, attachments=[])
+        assert app.extract_genie_answer(message) == {"text": "", "sql": "", "attachment_id": None}
 
-
-class TestConfidenceBadge:
-    def test_high_confidence(self):
+    def test_ask_genie_follow_up_uses_same_conversation(self):
         app = _import_app()
-        result = app.confidence_pill("HIGH")
-        assert "HIGH" in result
+        workspace = MagicMock()
+        message = MagicMock()
+        workspace.genie.create_message_and_wait.return_value = message
 
-    def test_medium_confidence(self):
-        app = _import_app()
-        result = app.confidence_pill("MEDIUM")
-        assert "MEDIUM" in result
+        result = app.ask_genie(workspace, "What is loss ratio?", "conversation-1")
 
-    def test_low_confidence(self):
-        app = _import_app()
-        result = app.confidence_pill("LOW")
-        assert "LOW" in result
-
-    def test_unknown_confidence(self):
-        app = _import_app()
-        result = app.confidence_pill("UNKNOWN")
-        assert "UNKNOWN" in result
+        assert result == (message, "conversation-1")
+        workspace.genie.create_message_and_wait.assert_called_once_with(
+            space_id=app.GENIE_SPACE_ID,
+            conversation_id="conversation-1",
+            content="What is loss ratio?",
+        )
 
 
-class TestConstants:
-    def test_mandatory_columns_is_list(self):
-        app = _import_app()
-        assert isinstance(app.MANDATORY_COLUMNS, list)
-
+class TestCompatibility:
     def test_match_type_options(self):
         app = _import_app()
         assert "DIRECT" in app.MATCH_TYPE_OPTIONS
         assert "NO_MATCH" in app.MATCH_TYPE_OPTIONS
+
+    def test_escape_function(self):
+        app = _import_app()
+        assert app._esc("O'Brien") == "O''Brien"
+        assert app._esc(None) == ""
+
+
+class TestModuleSync:
+    def test_app_review_store_matches_source(self):
+        header = "# generated, edit src/harmonization/review_store.py\n"
+        generated = APP_STORE.read_text()
+        assert generated.startswith(header)
+        assert generated[len(header) :] == SOURCE_STORE.read_text()

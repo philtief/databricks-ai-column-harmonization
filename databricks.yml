@@ -16,7 +16,7 @@ variables:
     default: 41754a8563a43a49
   ai_endpoint:
     description: Foundation model endpoint for ai_query mapping proposals.
-    default: databricks-claude-sonnet-5
+    default: databricks-claude-sonnet-4-6  # sonnet-5 is not enabled for ai_query batch inference (checked 2026-10-06)
   lakebase_project:
     description: Lakebase Autoscaling project that holds the review workflow state.
     default: halvard-harmonization

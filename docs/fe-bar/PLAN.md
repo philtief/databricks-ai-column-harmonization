@@ -65,7 +65,7 @@ All work packages code against these names. Do not rename them.
 
 **Workspace:** profile `pt` (fevm-agent-marketplace). Catalog `agent_marketplace_catalog`, schema
 `halvard_harmonization`. Warehouse: `Serverless Starter Warehouse` (`41754a8563a43a49`).
-LLM endpoint for mappings: `databricks-claude-sonnet-5` (job parameter `ai_endpoint`).
+LLM endpoint for mappings: `databricks-claude-sonnet-4-6` (job parameter `ai_endpoint`).
 
 **Countries:** `ES` (Spain, source_system `ES_PROPERTY_RAW`), `IT` (Italy, source_system `IT_PROPERTY_RAW`).
 Lowercase country code `cc` in paths and table names.

@@ -224,17 +224,10 @@ for global_column in sorted(target_values):
     if not mappings:
         continue
 
-    mapping_expression = None
-    for mapping in mappings:
-        condition = F.col(global_column) == F.lit(mapping["raw_value"])
-        mapping_expression = (
-            mapping_expression.when(condition, F.lit(mapping["harmonized_value"]))
-            if mapping_expression
-            else F.when(condition, F.lit(mapping["harmonized_value"]))
-        )
+    # Lookup map local -> group value; values without a translation stay as delivered (DQ check 10 reports them).
+    lookup = F.create_map(*[F.lit(v) for m in mappings for v in (m["raw_value"], m["harmonized_value"])])
     harmonized_df = harmonized_df.withColumn(
-        global_column,
-        mapping_expression.otherwise(F.col(global_column)),
+        global_column, F.coalesce(lookup[F.col(global_column)], F.col(global_column))
     )
     translated_columns.append(global_column)
 

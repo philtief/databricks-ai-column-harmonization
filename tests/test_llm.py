@@ -24,6 +24,8 @@ from harmonization.llm import (
     template_to_sql_concat,
 )
 
+APPROVED_EXAMPLES = [("prima_bruta", "gross_written_premium_eur"), ("num_siniestros_pagados", "claims_paid_count")]
+
 # ----------------------------- LLMConfig defaults -----------------------------
 
 
@@ -229,6 +231,32 @@ class TestRenderStaticPrompt:
         )
         assert out == "x, y"
 
+    def test_approved_examples_are_appended(self):
+        out = render_static_prompt(
+            "${target_columns}",
+            ai_context="",
+            target_columns=["a", "b"],
+            match_types=DEFAULT_MATCH_TYPES,
+            confidence_levels=DEFAULT_CONFIDENCE_LEVELS,
+            response_keys=DEFAULT_RESPONSE_KEYS,
+            approved_examples=APPROVED_EXAMPLES,
+        )
+        assert "Previously approved mappings from other subsidiaries (local -> global):" in out
+        assert "prima_bruta -> gross_written_premium_eur" in out
+        assert "num_siniestros_pagados -> claims_paid_count" in out
+
+    def test_empty_approved_examples_omit_block(self):
+        out = render_static_prompt(
+            "${target_columns}",
+            ai_context="",
+            target_columns=["a"],
+            match_types=DEFAULT_MATCH_TYPES,
+            confidence_levels=DEFAULT_CONFIDENCE_LEVELS,
+            response_keys=DEFAULT_RESPONSE_KEYS,
+            approved_examples=[],
+        )
+        assert "Previously approved mappings" not in out
+
     def test_extra_context_substitutes(self):
         out = render_static_prompt(
             "Lang=${language} Cols=${target_columns}",
@@ -387,6 +415,17 @@ class TestBuildAIQuerySQL:
         assert "FROM my_view" in sql
         assert "ai_query('databricks-gpt-5-2'" in sql
         assert "AS ai_result" in sql
+
+    def test_approved_examples_are_in_sql(self):
+        sql = build_ai_query_sql(
+            source_view="v",
+            llm_config=LLMConfig(),
+            ai_context="",
+            target_columns=["a"],
+            approved_examples=[("prima_bruta", "gross_written_premium_eur")],
+        )
+        assert "Previously approved mappings from other subsidiaries" in sql
+        assert "prima_bruta -> gross_written_premium_eur" in sql
 
     def test_endpoint_is_quoted(self):
         sql = build_ai_query_sql(

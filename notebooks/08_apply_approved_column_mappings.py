@@ -24,7 +24,7 @@
 dbutils.widgets.removeAll()
 dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
-dbutils.widgets.text("source_country", "", "Source Country")
+dbutils.widgets.text("source_country", "ES", "Source Country")
 dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
@@ -34,7 +34,7 @@ mapping_version = dbutils.widgets.get("mapping_version").strip()
 
 DB = f"`{catalog_name}`.`{schema_name}`"
 _cfg = load_harmonization_config()
-_refs = get_table_refs(_cfg, DB)
+_refs = get_table_refs(_cfg, DB, source_country)
 RAW_TABLE = _refs["raw_table"]
 DICT_TABLE = _refs["dict_table"]
 HARM_TABLE = _refs["harm_table"]
@@ -56,6 +56,7 @@ from pyspark.sql import functions as F
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
+import json
 
 # COMMAND ----------
 
@@ -93,8 +94,10 @@ if not active_mappings:
 # COMMAND ----------
 
 raw_df = spark.table(RAW_TABLE)
+metadata_columns = {"_source_file", "_ingested_at", "_rescued_data"}
+business_columns = [column for column in raw_df.columns if column not in metadata_columns]
 raw_count = raw_df.count()
-raw_columns = set(raw_df.columns)
+raw_columns = set(business_columns)
 
 print(f"Raw rows: {raw_count:,}, columns: {len(raw_columns)}")
 
@@ -107,11 +110,16 @@ print(f"Raw rows: {raw_count:,}, columns: {len(raw_columns)}")
 select_exprs = []
 mapped_cols = []
 unmapped_cols = []
+global_columns_mapped = set()
 
 for local_col, global_col in sorted(active_mappings.items()):
     if local_col in raw_columns:
+        if global_col in global_columns_mapped:
+            print(f"  WARNING: Multiple local columns map to '{global_col}' — using the first mapping.")
+            continue
         select_exprs.append(F.col(local_col).alias(global_col))
         mapped_cols.append((local_col, global_col))
+        global_columns_mapped.add(global_col)
     else:
         unmapped_cols.append(local_col)
         print(f"  WARNING: Dictionary column '{local_col}' not found in raw table — skipping.")
@@ -129,8 +137,18 @@ print(f"Mapped: {len(mapped_cols)}, unmapped: {len(unmapped_cols)}, excluded: {l
 
 # COMMAND ----------
 
-# Apply column renames from dictionary
+# Apply renames and ensure every target column exists before replaceWhere.
+target_columns = _cfg["target_model"]["columns"]
+global_names = [column["name"] for column in target_columns]
+target_types = {column["name"]: column["type"] for column in target_columns}
 harmonized_df = raw_df.select(select_exprs)
+existing_global_columns = {expression.name for expression in harmonized_df.columns}
+for global_name in global_names:
+    if global_name not in existing_global_columns:
+        harmonized_df = harmonized_df.withColumn(global_name, F.lit(None).cast(target_types[global_name]))
+
+for global_name in global_names:
+    harmonized_df = harmonized_df.withColumn(global_name, F.col(global_name).cast(target_types[global_name]))
 
 # Add pipeline metadata columns
 harmonized_df = (
@@ -152,7 +170,12 @@ print(f"Harmonized rows: {harm_count:,}, columns: {len(harm_cols)}")
 
 # COMMAND ----------
 
-(harmonized_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(HARM_TABLE))
+(
+    harmonized_df.write.format("delta")
+    .mode("overwrite")
+    .option("replaceWhere", f"source_country = '{source_country}'")
+    .saveAsTable(HARM_TABLE)
+)
 
 final_count = spark.table(HARM_TABLE).count()
 print(f"Written {final_count:,} rows to {HARM_TABLE}")
@@ -182,3 +205,15 @@ log_run_metric(
     f"Applied {len(mapped_cols)} column mappings (version={mapping_version}) from {SOURCE_SYSTEM}. "
     f"Wrote {final_count:,} rows to {HARM_TABLE}. Source country: {source_country}.",
 )
+
+summary = {
+    "source_country": source_country,
+    "source_system": SOURCE_SYSTEM,
+    "raw_rows": raw_count,
+    "harmonized_rows": final_count,
+    "mapped_columns": len(mapped_cols),
+    "unmapped_dictionary_columns": len(unmapped_cols),
+    "target_columns": len(global_names),
+    "mapping_version": mapping_version,
+}
+dbutils.notebook.exit(json.dumps(summary))

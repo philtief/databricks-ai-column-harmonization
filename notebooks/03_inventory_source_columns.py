@@ -20,13 +20,15 @@
 dbutils.widgets.removeAll()
 dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("source_country", "ES", "Source Country")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
+source_country = dbutils.widgets.get("source_country").strip()
 
 DB = f"`{catalog_name}`.`{schema_name}`"
 _cfg = load_harmonization_config()
-_refs = get_table_refs(_cfg, DB)
+_refs = get_table_refs(_cfg, DB, source_country)
 RAW_TABLE = _refs["raw_table"]
 INV_TABLE = _refs["inv_table"]
 OPS_TABLE = _refs["ops_table"]
@@ -48,6 +50,8 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, BooleanType, IntegerType, StringType, StructField, StructType, TimestampType
 
 RUN_ID = str(uuid4())
+_start = _dt.datetime.utcnow()
+import json
 
 # COMMAND ----------
 
@@ -71,6 +75,8 @@ inventory_rows = []
 
 for ordinal, field in enumerate(raw_schema.fields, 1):
     col_name = field.name
+    if col_name in {"_source_file", "_ingested_at", "_rescued_data"}:
+        continue
     dtype_str = field.dataType.simpleString()
     is_nullable = field.nullable
 
@@ -124,25 +130,12 @@ print(f"DataFrame rows: {inv_df.count()}")
 
 # COMMAND ----------
 
-spark.sql(f"""
-MERGE INTO {INV_TABLE} AS tgt
-USING _inv_staged AS src
-ON tgt.source_system = src.source_system
-   AND tgt.local_column_name = src.local_column_name
-WHEN MATCHED THEN UPDATE SET
-  tgt.local_data_type  = src.local_data_type,
-  tgt.sample_values    = src.sample_values,
-  tgt.ordinal_position = src.ordinal_position,
-  tgt.is_nullable      = src.is_nullable,
-  tgt.detected_at      = src.detected_at
-WHEN NOT MATCHED THEN INSERT (
-  source_system, source_table, local_column_name, local_data_type,
-  sample_values, ordinal_position, is_nullable, detected_at
-) VALUES (
-  src.source_system, src.source_table, src.local_column_name, src.local_data_type,
-  src.sample_values, src.ordinal_position, src.is_nullable, src.detected_at
+spark.sql(f"DELETE FROM {INV_TABLE} WHERE source_system = '{SOURCE_SYSTEM}'")
+(
+    inv_df.write.format("delta")
+    .mode("append")
+    .saveAsTable(INV_TABLE)
 )
-""")
 
 final_count = spark.table(INV_TABLE).count()
 print(f"Merge complete. Total rows in {INV_TABLE}: {final_count}")
@@ -184,3 +177,12 @@ log_run_metric(
     final_count,
     f"Inventoried {len(inventory_rows)} source columns from {SOURCE_SYSTEM}.{SOURCE_TABLE}. Total inventory rows: {final_count}.",
 )
+
+summary = {
+    "source_country": source_country,
+    "source_system": SOURCE_SYSTEM,
+    "source_table": SOURCE_TABLE,
+    "columns_inventoried": len(inventory_rows),
+    "inventory_rows": final_count,
+}
+dbutils.notebook.exit(json.dumps(summary))

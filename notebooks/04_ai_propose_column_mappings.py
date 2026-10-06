@@ -21,19 +21,27 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
+import json
+from dataclasses import replace as _dc_replace
+
+from harmonization.config import get_ai_context, get_mandatory_columns
+from harmonization.llm import build_ai_query_sql, estimate_cost, load_llm_config
+
 dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
 dbutils.widgets.text("ai_endpoint", "", "AI Endpoint (override; blank = use config)")
 dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
+dbutils.widgets.text("source_country", "ES", "Source Country")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
 ai_endpoint_override = dbutils.widgets.get("ai_endpoint").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
+source_country = dbutils.widgets.get("source_country").strip()
 
 DB = f"`{catalog_name}`.`{schema_name}`"
 _cfg = load_harmonization_config()
-_refs = get_table_refs(_cfg, DB)
+_refs = get_table_refs(_cfg, DB, source_country)
 INV_TABLE = _refs["inv_table"]
 GTC_TABLE = _refs["gtc_table"]
 DICT_TABLE = _refs["dict_table"]
@@ -42,22 +50,33 @@ USAGE_TABLE = _refs["usage_table"]
 OPS_TABLE = _refs["ops_table"]
 
 SOURCE_SYSTEM = _refs["source_system"]
+SOURCE_TABLE = _refs["source_table_name"]
 
-MANDATORY_COLUMNS = set(_cfg["mandatory_source_columns"])
+MANDATORY_COLUMNS = set(get_mandatory_columns(_cfg, source_country))
 
-AI_CONTEXT = _cfg["source_context"]["description"].strip()
+AI_CONTEXT = get_ai_context(_cfg, source_country)
 
-# All LLM knobs (endpoint, prompt template, vocabularies, cost) come from the
-# `ai:` block of harmonization_config.yaml. The widget can override the endpoint.
-from dataclasses import replace as _dc_replace
-
-from harmonization.llm import build_ai_query_sql, estimate_cost, load_llm_config
-
+# All LLM knobs come from config; the endpoint can be overridden by the widget.
 llm_config = load_llm_config(_cfg)
 if ai_endpoint_override:
     llm_config = _dc_replace(llm_config, endpoint=ai_endpoint_override)
 
 print(f"Config: {DB}, ai_endpoint={llm_config.endpoint}, mandatory_cols={len(MANDATORY_COLUMNS)}")
+
+approved_examples = [
+    (row["local_column_name"], row["global_column_name"])
+    for row in spark.sql(f"""
+        SELECT local_column_name, global_column_name
+        FROM {DICT_TABLE}
+        WHERE source_system <> '{SOURCE_SYSTEM}'
+          AND active_flag = TRUE
+          AND global_column_name IS NOT NULL
+          AND UPPER(global_column_name) <> 'NO_MATCH'
+        ORDER BY local_column_name
+        LIMIT 60
+    """).collect()
+]
+print(f"Approved examples from other subsidiaries: {len(approved_examples)}")
 
 # COMMAND ----------
 
@@ -119,7 +138,18 @@ print(f"Source columns: {total_source_cols} total, {len(approved_set)} approved,
 
 if pending_count == 0:
     print("No columns require new AI proposals. All are already approved.")
-    dbutils.notebook.exit("No pending columns — all mappings already approved.")
+    dbutils.notebook.exit(
+        json.dumps(
+            {
+                "source_country": source_country,
+                "source_system": SOURCE_SYSTEM,
+                "total_source_columns": total_source_cols,
+                "approved_columns": len(approved_set),
+                "pending_columns": 0,
+                "approved_examples_used": 0,
+            }
+        )
+    )
 
 # COMMAND ----------
 
@@ -140,6 +170,7 @@ ai_sql = build_ai_query_sql(
     llm_config=llm_config,
     ai_context=AI_CONTEXT,
     target_columns=global_cols_list,
+    approved_examples=approved_examples,
 )
 
 raw_ai_df = spark.sql(ai_sql)
@@ -330,6 +361,7 @@ usage_df = spark.createDataFrame(
     [
         (
             RUN_ID,
+            SOURCE_SYSTEM,
             "COLUMN",
             SOURCE_SYSTEM,
             pending_count,
@@ -367,3 +399,18 @@ log_run_metric(
     cand_count,
     f"AI proposed mappings for {pending_count} columns. {success_count} success, {error_count} errors.",
 )
+
+summary = {
+    "source_country": source_country,
+    "source_system": SOURCE_SYSTEM,
+    "source_table": SOURCE_TABLE,
+    "total_source_columns": total_source_cols,
+    "approved_columns": len(approved_set),
+    "pending_columns": pending_count,
+    "approved_examples_used": len(approved_examples),
+    "success_rows": success_count,
+    "error_rows": error_count,
+    "low_confidence_rows": low_conf_count,
+    "total_candidates": cand_count,
+}
+dbutils.notebook.exit(json.dumps(summary))

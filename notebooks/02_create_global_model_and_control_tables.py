@@ -19,21 +19,27 @@
 # COMMAND ----------
 
 dbutils.widgets.removeAll()
+import json
+
 dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("source_country", "ES", "Source Country")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
+source_country = dbutils.widgets.get("source_country").strip()
 
 DB = f"`{catalog_name}`.`{schema_name}`"
-OPS_TABLE = f"{DB}.`workflow_run_metrics`"
+_cfg = load_harmonization_config()
+_refs = get_table_refs(_cfg, DB, source_country)
+OPS_TABLE = _refs["ops_table"]
 
 from uuid import uuid4
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
 
-print(f"Config: {DB}")
+print(f"Config: {DB}, country={source_country}")
 
 # COMMAND ----------
 
@@ -66,7 +72,6 @@ def execute_ddl(label, sql):
 # For the demo, examples/spain_demo/01_generate_spain_raw_data.py creates it.
 
 # Harmonized table: generated dynamically from config target_model
-_cfg = load_harmonization_config()
 _target_table = _cfg["target_model"]["table_name"]
 
 _col_defs = []
@@ -202,6 +207,7 @@ execute_ddl(
     f"""
 CREATE TABLE IF NOT EXISTS {DB}.`column_mapping_audit` (
   audit_id              BIGINT    COMMENT 'Audit event surrogate identifier',
+  source_system         STRING    COMMENT 'Source system identifier',
   local_column_name     STRING    COMMENT 'The source column that was reviewed',
   old_review_status     STRING    COMMENT 'Review status before the action',
   new_review_status     STRING    COMMENT 'Review status after the action',
@@ -251,6 +257,41 @@ _add_column_if_missing(
     f"{DB}.`column_mapping_audit`", "action_source", "STRING", "Source of the action: DATABRICKS_APP | SQL_DIRECT"
 )
 
+_add_column_if_missing(
+    f"{DB}.`column_mapping_audit`",
+    "source_system",
+    "STRING",
+    "Source system identifier",
+)
+
+_add_column_if_missing(
+    f"{DB}.`ai_mapping_usage_metrics`",
+    "source_system",
+    "STRING",
+    "Source system identifier",
+)
+
+_add_column_if_missing(
+    f"{DB}.`data_quality_results`",
+    "source_system",
+    "STRING",
+    "Source system identifier",
+)
+
+_add_column_if_missing(
+    f"{DB}.`value_mapping_candidates`",
+    "source_system",
+    "STRING",
+    "Source system identifier",
+)
+
+_add_column_if_missing(
+    f"{DB}.`value_mapping_dictionary`",
+    "source_system",
+    "STRING",
+    "Source system identifier",
+)
+
 # COMMAND ----------
 
 # MAGIC %md ## Value-Mapping Control Tables
@@ -262,6 +303,7 @@ execute_ddl(
     f"""
 CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_candidates` (
   candidate_id              BIGINT    COMMENT 'Surrogate row identifier',
+  source_system             STRING    COMMENT 'Source system identifier',
   source_field              STRING    COMMENT 'Global field name that holds this value',
   raw_value                 STRING    COMMENT 'Raw categorical value from source',
   proposed_harmonized_value STRING    COMMENT 'AI-proposed harmonized equivalent',
@@ -286,6 +328,7 @@ execute_ddl(
     f"""
 CREATE TABLE IF NOT EXISTS {DB}.`value_mapping_dictionary` (
   source_field       STRING    COMMENT 'Global field name',
+  source_system      STRING    COMMENT 'Source system identifier',
   raw_value          STRING    COMMENT 'Original source categorical value',
   harmonized_value   STRING    COMMENT 'Approved harmonized value',
   approval_status    STRING    COMMENT 'APPROVED | CORRECTED',
@@ -330,6 +373,7 @@ execute_ddl(
     f"""
 CREATE TABLE IF NOT EXISTS {DB}.`ai_mapping_usage_metrics` (
   run_id                   STRING    COMMENT 'UUID run identifier',
+  source_system            STRING    COMMENT 'Source system identifier',
   mapping_type             STRING    COMMENT 'COLUMN or VALUE',
   source_field_or_column   STRING    COMMENT 'Source field or column that was processed',
   candidate_rows           BIGINT    COMMENT 'Number of candidates submitted to AI',
@@ -351,6 +395,7 @@ execute_ddl(
     f"""
 CREATE TABLE IF NOT EXISTS {DB}.`data_quality_results` (
   run_id       STRING    COMMENT 'UUID run identifier',
+  source_system STRING   COMMENT 'Source system identifier',
   check_name   STRING    COMMENT 'Name of the data quality check',
   check_status STRING    COMMENT 'PASSED | FAILED | WARNING',
   metric_value DOUBLE    COMMENT 'Numeric metric value (count, ratio, etc.)',
@@ -388,11 +433,11 @@ execute_ddl(
     f"""
 CREATE OR REPLACE VIEW {DB}.`vw_mapping_review_summary` AS
 SELECT
-  review_status, mandatory_flag, confidence,
+  source_system, review_status, mandatory_flag, confidence,
   COUNT(*) AS count,
   SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
 FROM {DB}.`column_mapping_candidates`
-GROUP BY review_status, mandatory_flag, confidence
+GROUP BY source_system, review_status, mandatory_flag, confidence
 """,
 )
 
@@ -402,6 +447,7 @@ execute_ddl(
 CREATE OR REPLACE VIEW {DB}.`vw_publish_readiness` AS
 WITH mandatory AS (
   SELECT local_column_name AS mandatory_column_name,
+         source_system,
          review_status, final_global_column_name, final_match_type,
          reviewed_by, reviewed_at, app_decision_source,
          CASE WHEN review_status IN ('APPROVED','CORRECTED') THEN TRUE ELSE FALSE END AS is_ready
@@ -435,6 +481,7 @@ SELECT
   g.global_column_name, g.global_data_type, g.semantic_group,
   g.required_flag, g.business_definition,
   c.local_column_name, c.proposed_match_type, c.confidence, c.review_status,
+  c.source_system,
   CASE
     WHEN c.review_status IN ('APPROVED','CORRECTED') THEN 'MAPPED'
     WHEN c.review_status = 'REJECTED'               THEN 'REJECTED'
@@ -536,6 +583,15 @@ print(f"DDL results: {ok_count} OK, {err_count} ERROR")
 if err_count > 0:
     raise Exception(f"DDL creation had {err_count} errors. Review output above.")
 
+summary = {
+    "source_country": source_country,
+    "source_system": _refs["source_system"],
+    "ddl_ok": ok_count,
+    "ddl_errors": err_count,
+    "target_columns": len(global_cols),
+    "global_target_columns": gtc_count,
+}
+
 # COMMAND ----------
 
 # MAGIC %md ## Log to workflow_run_metrics
@@ -552,3 +608,5 @@ log_run_metric(
     gtc_count,
     f"Created all tables and views. global_target_columns prepopulated with {gtc_count} rows.",
 )
+
+dbutils.notebook.exit(json.dumps(summary))

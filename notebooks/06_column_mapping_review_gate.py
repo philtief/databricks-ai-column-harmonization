@@ -2,17 +2,17 @@
 # MAGIC %md
 # MAGIC # 06 — Column Mapping Review Gate
 # MAGIC
-# MAGIC **This notebook is a workflow gate.**
-# MAGIC
-# MAGIC It checks that all mandatory source columns have been reviewed (APPROVED or CORRECTED)
-# MAGIC via the Column Mapping Review Databricks App. If any mandatory column is still
-# MAGIC PENDING or REJECTED without a corrected target, the notebook raises an exception
-# MAGIC and the workflow stops.
-# MAGIC
-# MAGIC Mandatory columns are loaded from `config/harmonization_config.yaml`.
-# MAGIC
-# MAGIC **To unblock:** Review pending mappings using the Column Mapping Review Databricks App,
-# MAGIC then re-run this task.
+# MAGIC Pulls decisions and audit rows from Lakebase into Delta, then blocks unless
+# MAGIC every mandatory column for this source system has an approved or corrected
+# MAGIC mapping.
+
+# COMMAND ----------
+
+# MAGIC %pip install "psycopg[binary]>=3.2" "databricks-sdk>=0.81" -q
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -24,22 +24,32 @@
 
 # COMMAND ----------
 
+import json
+
 dbutils.widgets.removeAll()
 dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("source_country", "ES", "Source Country")
+dbutils.widgets.text("lakebase_endpoint", "", "Lakebase Endpoint")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
+source_country = dbutils.widgets.get("source_country").strip()
+lakebase_endpoint = dbutils.widgets.get("lakebase_endpoint").strip()
+
+if not lakebase_endpoint:
+    raise ValueError("lakebase_endpoint must not be empty")
 
 DB = f"`{catalog_name}`.`{schema_name}`"
 _cfg = load_harmonization_config()
-_refs = get_table_refs(_cfg, DB)
+_refs = get_table_refs(_cfg, DB, source_country)
 CAND_TABLE = _refs["cand_table"]
+AUDIT_TABLE = _refs["audit_table"]
 OPS_TABLE = _refs["ops_table"]
 SOURCE_SYSTEM = _refs["source_system"]
-MANDATORY_COLUMNS = _cfg["mandatory_source_columns"]
+MANDATORY_COLUMNS = get_mandatory_columns(_cfg, source_country)
 
-print(f"Config: {DB}")
+print(f"Config: {DB}, country={source_country}, endpoint={lakebase_endpoint}")
 
 # COMMAND ----------
 
@@ -47,141 +57,217 @@ print(f"Config: {DB}")
 
 # COMMAND ----------
 
-import datetime as _dt
+from datetime import datetime
 from uuid import uuid4
+
+from databricks.sdk import WorkspaceClient
+from pyspark.sql.types import (
+    ArrayType,
+    BooleanType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
+
+from harmonization.review_store import connect, fetch_decisions
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
 
 # COMMAND ----------
 
-# MAGIC %md ## Overall Status Summary
+# MAGIC %md ## Pull Decisions from Lakebase
 
 # COMMAND ----------
 
-all_candidates_df = spark.sql(f"""
-SELECT
-  review_status,
-  mandatory_flag,
-  COUNT(*) AS count
-FROM {CAND_TABLE}
-WHERE source_system = '{SOURCE_SYSTEM}'
-GROUP BY review_status, mandatory_flag
-ORDER BY mandatory_flag DESC, review_status
+workspace_client = WorkspaceClient()
+conn = connect(workspace_client, lakebase_endpoint)
+try:
+    decisions = fetch_decisions(conn, SOURCE_SYSTEM)
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT audit_id, source_system, local_column_name, old_status,
+                   new_status, old_global_column_name, new_global_column_name,
+                   action_by, action_at, action_comment, action_source
+            FROM harmonization_review.review_audit
+            WHERE source_system = %s
+            ORDER BY audit_id
+            """,
+            (SOURCE_SYSTEM,),
+        )
+        audit_rows = cursor.fetchall()
+finally:
+    conn.close()
+
+print(f"Decisions synced: {len(decisions)}; audit rows: {len(audit_rows)}")
+
+# COMMAND ----------
+
+# MAGIC %md ## MERGE Decisions into Candidates
+
+# COMMAND ----------
+
+now = _dt.datetime.utcnow()
+decision_schema = StructType(
+    [
+        StructField("source_system", StringType(), False),
+        StructField("local_column_name", StringType(), False),
+        StructField("review_status", StringType(), True),
+        StructField("final_global_column_name", StringType(), True),
+        StructField("final_match_type", StringType(), True),
+        StructField("reviewed_by", StringType(), True),
+        StructField("reviewed_at", TimestampType(), True),
+        StructField("review_comment", StringType(), True),
+        StructField("app_decision_source", StringType(), True),
+        StructField("updated_at", TimestampType(), True),
+    ]
+)
+
+decision_rows = [
+    (
+        row["source_system"],
+        row["local_column_name"],
+        row["review_status"],
+        row.get("final_global_column_name"),
+        row.get("final_match_type"),
+        row.get("reviewed_by"),
+        row.get("reviewed_at"),
+        row.get("review_comment"),
+        "LAKEBASE_APP",
+        now,
+    )
+    for row in decisions
+]
+
+if decision_rows:
+    decision_df = spark.createDataFrame(decision_rows, schema=decision_schema)
+    decision_df.createOrReplaceTempView("_review_decisions")
+    spark.sql(f"""
+MERGE INTO {CAND_TABLE} AS tgt
+USING _review_decisions AS src
+ON tgt.source_system = src.source_system
+   AND tgt.local_column_name = src.local_column_name
+WHEN MATCHED THEN UPDATE SET
+  tgt.review_status = src.review_status,
+  tgt.final_global_column_name = src.final_global_column_name,
+  tgt.final_match_type = src.final_match_type,
+  tgt.reviewed_by = src.reviewed_by,
+  tgt.reviewed_at = src.reviewed_at,
+  tgt.review_comment = src.review_comment,
+  tgt.app_decision_source = src.app_decision_source,
+  tgt.updated_at = src.updated_at
 """)
 
-display(all_candidates_df)
+# COMMAND ----------
+
+# MAGIC %md ## Copy Lakebase Audit Rows
 
 # COMMAND ----------
 
-# MAGIC %md ## Check Blocking Conditions
+audit_schema = StructType(
+    [
+        StructField("audit_id", LongType(), False),
+        StructField("source_system", StringType(), False),
+        StructField("local_column_name", StringType(), True),
+        StructField("old_review_status", StringType(), True),
+        StructField("new_review_status", StringType(), True),
+        StructField("old_global_column_name", StringType(), True),
+        StructField("new_global_column_name", StringType(), True),
+        StructField("action_by", StringType(), True),
+        StructField("action_at", TimestampType(), True),
+        StructField("action_comment", StringType(), True),
+        StructField("action_source", StringType(), True),
+    ]
+)
+
+audit_delta_rows = [
+    (
+        row["audit_id"],
+        row["source_system"],
+        row["local_column_name"],
+        row.get("old_status"),
+        row.get("new_status"),
+        row.get("old_global_column_name"),
+        row.get("new_global_column_name"),
+        row.get("action_by"),
+        row.get("action_at"),
+        row.get("action_comment"),
+        row.get("action_source") or "LAKEBASE_APP",
+    )
+    for row in audit_rows
+]
+
+if audit_delta_rows:
+    audit_df = spark.createDataFrame(audit_delta_rows, schema=audit_schema)
+    audit_df.createOrReplaceTempView("_review_audit")
+    spark.sql(f"""
+MERGE INTO {AUDIT_TABLE} AS tgt
+USING _review_audit AS src
+ON tgt.source_system = src.source_system
+   AND tgt.audit_id = src.audit_id
+WHEN NOT MATCHED THEN INSERT (
+  audit_id, source_system, local_column_name, old_review_status,
+  new_review_status, old_global_column_name, new_global_column_name,
+  old_match_type, new_match_type, action_by, action_at,
+  action_comment, action_source
+) VALUES (
+  src.audit_id, src.source_system, src.local_column_name, src.old_review_status,
+  src.new_review_status, src.old_global_column_name, src.new_global_column_name,
+  NULL, NULL, src.action_by, src.action_at,
+  src.action_comment, src.action_source
+)
+""")
 
 # COMMAND ----------
 
-# Condition A: Mandatory columns that are still PENDING
-blocking_pending_df = spark.sql(f"""
-SELECT
-  local_column_name,
-  review_status,
-  proposed_global_column_name,
-  confidence,
-  ai_error_status,
-  mandatory_flag
+# MAGIC %md ## Review Gate
+
+# COMMAND ----------
+
+pending_blocking = spark.sql(f"""
+SELECT local_column_name, review_status, proposed_global_column_name,
+       confidence, ai_error_status, mandatory_flag
 FROM {CAND_TABLE}
 WHERE source_system = '{SOURCE_SYSTEM}'
   AND mandatory_flag = TRUE
   AND review_status = 'PENDING'
 ORDER BY local_column_name
-""")
+""").collect()
 
-pending_blocking = blocking_pending_df.collect()
-
-# Condition B: Mandatory columns that are REJECTED with no final target set
-blocking_rejected_df = spark.sql(f"""
-SELECT
-  local_column_name,
-  review_status,
-  proposed_global_column_name,
-  final_global_column_name,
-  confidence,
-  ai_error_status,
-  mandatory_flag
+rejected_blocking = spark.sql(f"""
+SELECT local_column_name, review_status, proposed_global_column_name,
+       final_global_column_name, confidence, ai_error_status, mandatory_flag
 FROM {CAND_TABLE}
 WHERE source_system = '{SOURCE_SYSTEM}'
   AND mandatory_flag = TRUE
   AND review_status = 'REJECTED'
   AND (final_global_column_name IS NULL OR final_global_column_name = '')
 ORDER BY local_column_name
-""")
+""").collect()
 
-rejected_blocking = blocking_rejected_df.collect()
-
-# Also check: mandatory columns that don't appear in candidates at all (not yet inventoried/proposed)
-found_mandatory_cols = set(
+found_mandatory_cols = {
     row["local_column_name"]
     for row in spark.sql(f"""
         SELECT DISTINCT local_column_name
         FROM {CAND_TABLE}
-        WHERE source_system = '{SOURCE_SYSTEM}'
-          AND mandatory_flag = TRUE
+        WHERE source_system = '{SOURCE_SYSTEM}' AND mandatory_flag = TRUE
     """).collect()
-)
-
-missing_mandatory = [c for c in MANDATORY_COLUMNS if c not in found_mandatory_cols]
+}
+missing_mandatory = [column for column in MANDATORY_COLUMNS if column not in found_mandatory_cols]
+blocking_count = len(pending_blocking) + len(rejected_blocking) + len(missing_mandatory)
+gate_status = "PASSED" if blocking_count == 0 else "BLOCKED"
 
 print(
-    f"Mandatory PENDING: {len(pending_blocking)}, REJECTED no target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}"
+    f"Gate decision: {gate_status}. Mandatory PENDING: {len(pending_blocking)}, "
+    f"REJECTED no target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}"
 )
 
 # COMMAND ----------
 
-# MAGIC %md ## Diagnostic Table
-
-# COMMAND ----------
-
-mandatory_status_df = spark.sql(f"""
-SELECT
-  local_column_name,
-  review_status,
-  proposed_global_column_name,
-  COALESCE(final_global_column_name, proposed_global_column_name) AS resolved_global_column,
-  proposed_match_type,
-  confidence,
-  ai_error_status,
-  reviewed_by,
-  reviewed_at
-FROM {CAND_TABLE}
-WHERE source_system = '{SOURCE_SYSTEM}'
-  AND mandatory_flag = TRUE
-ORDER BY review_status, local_column_name
-""")
-
-display(mandatory_status_df)
-
-# COMMAND ----------
-
-# MAGIC %md ## Gate Decision
-
-# COMMAND ----------
-
-gate_status = "PASSED"
-blocking_count = len(pending_blocking) + len(rejected_blocking) + len(missing_mandatory)
-
-if blocking_count > 0:
-    gate_status = "BLOCKED"
-
-print(f"Gate decision: {gate_status}")
-
-if gate_status == "BLOCKED":
-    print(
-        f"  BLOCKING: {len(pending_blocking)} PENDING, {len(rejected_blocking)} REJECTED no target, {len(missing_mandatory)} missing"
-    )
-else:
-    print("  All mandatory columns have an approved or corrected mapping.")
-
-# COMMAND ----------
-
-# MAGIC %md ## Log Gate Result to workflow_run_metrics
+# MAGIC %md ## Log and Exit
 
 # COMMAND ----------
 
@@ -192,24 +278,27 @@ log_run_metric(
     "column_mapping_review_gate",
     gate_status,
     _start,
-    blocking_count,
-    f"Gate {gate_status}. Blocking issues: {blocking_count}. Pending: {len(pending_blocking)}, Rejected-no-target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}.",
+    len(decisions),
+    f"Synced {len(decisions)} decisions and {len(audit_delta_rows)} audit rows. Gate {gate_status}.",
 )
-
-# COMMAND ----------
-
-# MAGIC %md ## Raise Exception if Blocked
-
-# COMMAND ----------
 
 if gate_status == "BLOCKED":
     raise Exception(
-        f"COLUMN MAPPING GATE BLOCKED: {blocking_count} mandatory column(s) are still PENDING or unresolved. "
-        f"Review pending mappings using the Column Mapping Review Databricks App, "
-        f"then re-run this task. "
-        f"Pending: {[r['local_column_name'] for r in pending_blocking]}. "
-        f"Rejected-no-target: {[r['local_column_name'] for r in rejected_blocking]}. "
-        f"Missing from candidates: {missing_mandatory}."
+        f"COLUMN MAPPING GATE BLOCKED: {blocking_count} mandatory column(s) are unresolved. "
+        f"Pending: {[row['local_column_name'] for row in pending_blocking]}. "
+        f"Rejected-no-target: {[row['local_column_name'] for row in rejected_blocking]}. "
+        f"Missing: {missing_mandatory}."
     )
 
 print("Gate PASSED. Proceeding to 07_build_column_mapping_dictionary.")
+
+summary = {
+    "source_country": source_country,
+    "source_system": SOURCE_SYSTEM,
+    "decisions_synced": len(decisions),
+    "audit_rows_synced": len(audit_delta_rows),
+    "gate_status": gate_status,
+    "blocking_issues": blocking_count,
+    "synced_at": datetime.utcnow().isoformat(),
+}
+dbutils.notebook.exit(json.dumps(summary))

@@ -24,14 +24,16 @@ dbutils.widgets.removeAll()
 dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
 dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
+dbutils.widgets.text("source_country", "ES", "Source Country")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
+source_country = dbutils.widgets.get("source_country").strip()
 
 DB = f"`{catalog_name}`.`{schema_name}`"
 _cfg = load_harmonization_config()
-_refs = get_table_refs(_cfg, DB)
+_refs = get_table_refs(_cfg, DB, source_country)
 CAND_TABLE = _refs["cand_table"]
 DICT_TABLE = _refs["dict_table"]
 OPS_TABLE = _refs["ops_table"]
@@ -54,6 +56,7 @@ from pyspark.sql.types import TimestampType
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
+import json
 
 # COMMAND ----------
 
@@ -217,7 +220,12 @@ if valid_local_cols:
     spark.sql(deactivate_sql)
     print("Stale entries deactivated (if any).")
 else:
-    print("No valid local columns -- nothing to deactivate.")
+    spark.sql(f"""
+        UPDATE {DICT_TABLE}
+        SET active_flag = FALSE, updated_at = '{_now.isoformat()}'
+        WHERE source_system = '{SOURCE_SYSTEM}' AND active_flag = TRUE
+    """)
+    print("No valid local columns; all current dictionary entries deactivated.")
 
 # COMMAND ----------
 
@@ -262,3 +270,15 @@ log_run_metric(
     active_count,
     f"Dictionary built with {active_count} active entries. Approved: {approved_count}, Excluded (NO_MATCH): {excluded_count}, Rejected: {rejected_count}. Version: {mapping_version}.",
 )
+
+summary = {
+    "source_country": source_country,
+    "source_system": SOURCE_SYSTEM,
+    "approved_candidates": approved_count,
+    "valid_mappings": valid_count,
+    "excluded_no_match": excluded_count,
+    "rejected": rejected_count,
+    "active_dictionary_entries": active_count,
+    "mapping_version": mapping_version,
+}
+dbutils.notebook.exit(json.dumps(summary))

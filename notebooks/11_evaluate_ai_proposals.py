@@ -18,6 +18,7 @@
 import json
 
 import mlflow
+from pyspark.sql import functions as F
 
 from harmonization.config import get_source_context
 from harmonization.evaluation import evaluate, load_answer_key, to_metric_rows
@@ -116,11 +117,18 @@ spark.sql(
         source_system STRING NOT NULL,
         metric_name STRING NOT NULL,
         metric_value DOUBLE,
-        slice STRING
+        slice STRING,
+        evaluated_at TIMESTAMP
     )
     """
 )
-spark.createDataFrame(metric_rows).write.format("delta").mode("append").saveAsTable(EVAL_RESULTS_TABLE)
+(
+    spark.createDataFrame(metric_rows)
+    .withColumn("evaluated_at", F.current_timestamp())
+    .write.format("delta")
+    .mode("append")
+    .saveAsTable(EVAL_RESULTS_TABLE)
+)
 print(f"MLflow run: {mlflow_run_id}; persisted {len(metric_rows)} metric rows.")
 
 # COMMAND ----------

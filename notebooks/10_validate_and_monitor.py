@@ -119,9 +119,7 @@ for global_column, allowed_values in sorted(CATEGORICAL_TARGETS.items()):
     if global_column not in harm_columns:
         record((f"values_in_allowed_list_{global_column}", "WARNING", len(allowed_values), "column is missing"))
         continue
-    invalid_count = harm_df.where(
-        F.col(global_column).isNotNull() & ~F.col(global_column).isin(allowed_values)
-    ).count()
+    invalid_count = harm_df.where(F.col(global_column).isNotNull() & ~F.col(global_column).isin(allowed_values)).count()
     record(
         check_constraint(
             f"values_in_allowed_list_{global_column}",
@@ -221,7 +219,10 @@ ORDER BY local_column_name
 )
 
 existing_required = [column for column in REQUIRED_TARGET_COLUMNS if column in harm_columns]
-required_cols_sql = ",\n  ".join(f"COUNT(DISTINCT `{column}`) AS distinct_{column}" for column in existing_required) or "1 AS placeholder"
+required_cols_sql = (
+    ",\n  ".join(f"COUNT(DISTINCT `{column}`) AS distinct_{column}" for column in existing_required)
+    or "1 AS placeholder"
+)
 display(
     spark.sql(f"""
 SELECT COUNT(*) AS row_count,

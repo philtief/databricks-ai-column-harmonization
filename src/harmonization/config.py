@@ -65,37 +65,9 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     return result
 
 
-def get_target_columns(config: dict) -> list[tuple]:
-    """Convert config column definitions to the tuple format needed by notebook 02.
-
-    Returns list of (name, type, description, examples, required, semantic_group) tuples.
-    """
-    return [
-        (
-            col["name"],
-            col["type"],
-            col["description"],
-            col.get("examples", []),
-            col.get("required", False),
-            col.get("semantic_group", ""),
-        )
-        for col in config["target_model"]["columns"]
-    ]
-
-
-def get_target_column_names(config: dict) -> list[str]:
-    """Return the list of global target column names from config."""
-    return [col["name"] for col in config["target_model"]["columns"]]
-
-
 def get_mandatory_columns(config: dict, country: str) -> list[str]:
     """Return the local columns of one country that must be reviewed before the gate passes."""
     return list(get_source_context(config, country)["mandatory_columns"])
-
-
-def get_semantic_fields(config: dict) -> list[str]:
-    """Return the semantic fields eligible for value mapping."""
-    return list(config["semantic_fields"])
 
 
 def get_source_context(config: dict, country: str) -> dict:

@@ -18,12 +18,9 @@ import yaml
 from harmonization.config import (
     get_ai_context,
     get_mandatory_columns,
-    get_semantic_fields,
     get_source_context,
     get_source_system,
     get_source_table,
-    get_target_column_names,
-    get_target_columns,
     get_target_table,
     load_config,
 )
@@ -185,48 +182,9 @@ class TestLoadConfig:
             load_config(str(bad_config))
 
 
-class TestGetTargetColumns:
-    def test_returns_all_configured_columns(self, config):
-        cols = get_target_columns(config)
-        assert len(cols) == 3
-
-    def test_tuple_structure(self, config):
-        cols = get_target_columns(config)
-        name, dtype, desc, examples, required, group = cols[0]
-        assert name == "id"
-        assert dtype == "STRING"
-        assert isinstance(desc, str) and len(desc) > 0
-        assert isinstance(examples, list)
-        assert isinstance(required, bool)
-        assert isinstance(group, str)
-
-    def test_optional_fields_default_to_safe_values(self, tmp_path):
-        cfg = {
-            "sources": dict(VALID_CONFIG["sources"]),
-            "target_model": {
-                "columns": [{"name": "x", "type": "STRING", "description": "y"}],
-            },
-            "semantic_fields": [],
-            "ai": {},
-        }
-        p = tmp_path / "h.yaml"
-        p.write_text(yaml.dump(cfg))
-        cols = get_target_columns(load_config(str(p)))
-        _, _, _, examples, required, group = cols[0]
-        assert examples == []
-        assert required is False
-        assert group == ""
-
-    def test_column_names_are_unique(self, config):
-        names = get_target_column_names(config)
-        assert len(names) == len(set(names))
-
-    def test_column_names_are_non_empty_strings(self, config):
-        for name in get_target_column_names(config):
-            assert isinstance(name, str) and len(name) > 0
-
+class TestShippedTargetModel:
     def test_shipped_config_columns_are_unique(self, shipped_config):
-        names = get_target_column_names(shipped_config)
+        names = [column["name"] for column in shipped_config["target_model"]["columns"]]
         assert len(names) == len(set(names)), "shipped config has duplicate column names"
 
 
@@ -256,15 +214,6 @@ class TestGetMandatoryColumns:
         bad.write_text(yaml.dump(data))
         with pytest.raises(ValueError, match="mandatory_columns"):
             load_config(str(bad))
-
-
-class TestGetSemanticFields:
-    def test_returns_configured_semantic_fields(self, config):
-        assert get_semantic_fields(config) == ["country"]
-
-    def test_all_non_empty_strings(self, config):
-        for field in get_semantic_fields(config):
-            assert isinstance(field, str) and len(field) > 0
 
 
 class TestGetAiContext:

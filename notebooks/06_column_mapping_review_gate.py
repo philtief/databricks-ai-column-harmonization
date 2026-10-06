@@ -71,7 +71,7 @@ from pyspark.sql.types import (
     TimestampType,
 )
 
-from harmonization.review_store import connect, fetch_decisions
+from harmonization.review_store import connect, fetch_queue
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
@@ -85,7 +85,8 @@ _start = _dt.datetime.utcnow()
 workspace_client = WorkspaceClient()
 conn = connect(workspace_client, lakebase_endpoint)
 try:
-    decisions = fetch_decisions(conn, SOURCE_SYSTEM)
+    # All rows, not only decisions: a RESET in the app sets PENDING, and Delta must see that too.
+    decisions = fetch_queue(conn, SOURCE_SYSTEM)
     with conn.cursor() as cursor:
         cursor.execute(
             """
@@ -136,7 +137,7 @@ decision_rows = [
         row.get("reviewed_by"),
         row.get("reviewed_at"),
         row.get("review_comment"),
-        "LAKEBASE_APP",
+        "DATABRICKS_APP",
         now,
     )
     for row in decisions
@@ -195,7 +196,7 @@ audit_delta_rows = [
         row.get("action_by"),
         row.get("action_at"),
         row.get("action_comment"),
-        row.get("action_source") or "LAKEBASE_APP",
+        row.get("action_source") or "DATABRICKS_APP",
     )
     for row in audit_rows
 ]
@@ -237,14 +238,14 @@ WHERE source_system = '{SOURCE_SYSTEM}'
 ORDER BY local_column_name
 """).collect()
 
-rejected_blocking = spark.sql(f"""
+no_target_blocking = spark.sql(f"""
 SELECT local_column_name, review_status, proposed_global_column_name,
        final_global_column_name, confidence, ai_error_status, mandatory_flag
 FROM {CAND_TABLE}
 WHERE source_system = '{SOURCE_SYSTEM}'
   AND mandatory_flag = TRUE
-  AND review_status = 'REJECTED'
-  AND (final_global_column_name IS NULL OR final_global_column_name = '')
+  AND review_status <> 'PENDING'
+  AND (final_global_column_name IS NULL OR final_global_column_name = '' OR upper(final_global_column_name) = 'NO_MATCH')
 ORDER BY local_column_name
 """).collect()
 
@@ -257,12 +258,12 @@ found_mandatory_cols = {
     """).collect()
 }
 missing_mandatory = [column for column in MANDATORY_COLUMNS if column not in found_mandatory_cols]
-blocking_count = len(pending_blocking) + len(rejected_blocking) + len(missing_mandatory)
+blocking_count = len(pending_blocking) + len(no_target_blocking) + len(missing_mandatory)
 gate_status = "PASSED" if blocking_count == 0 else "BLOCKED"
 
 print(
     f"Gate decision: {gate_status}. Mandatory PENDING: {len(pending_blocking)}, "
-    f"REJECTED no target: {len(rejected_blocking)}, Missing: {len(missing_mandatory)}"
+    f"Reviewed but no target: {len(no_target_blocking)}, Missing: {len(missing_mandatory)}"
 )
 
 # COMMAND ----------
@@ -286,7 +287,7 @@ if gate_status == "BLOCKED":
     raise Exception(
         f"COLUMN MAPPING GATE BLOCKED: {blocking_count} mandatory column(s) are unresolved. "
         f"Pending: {[row['local_column_name'] for row in pending_blocking]}. "
-        f"Rejected-no-target: {[row['local_column_name'] for row in rejected_blocking]}. "
+        f"Reviewed-no-target: {[row['local_column_name'] for row in no_target_blocking]}. "
         f"Missing: {missing_mandatory}."
     )
 

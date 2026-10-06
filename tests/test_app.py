@@ -6,10 +6,10 @@ import importlib.util
 import os
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from databricks.sdk.service import dashboards as genie
 
 ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = ROOT / "apps" / "column_mapping_review_app"
@@ -92,11 +92,17 @@ class TestCountryAndPublishRules:
     def test_publish_enabled_when_mandatory_columns_are_resolved(self):
         app = _import_app()
         rows = [
-            {"mandatory_flag": True, "review_status": "APPROVED"},
-            {"mandatory_flag": True, "review_status": "CORRECTED"},
+            {"mandatory_flag": True, "review_status": "APPROVED", "final_global_column_name": "region"},
+            {"mandatory_flag": True, "review_status": "CORRECTED", "final_global_column_name": "currency"},
             {"mandatory_flag": False, "review_status": "PENDING"},
         ]
         assert app.publish_is_ready(rows) is True
+
+    def test_publish_disabled_when_mandatory_column_has_no_target(self):
+        app = _import_app()
+        for final in (None, "NO_MATCH"):
+            rows = [{"mandatory_flag": True, "review_status": "REJECTED", "final_global_column_name": final}]
+            assert app.publish_is_ready(rows) is False
 
 
 class TestReviewActions:
@@ -155,31 +161,41 @@ class TestReviewActions:
 
 
 class TestGenieHelpers:
+    # Real SDK objects (imported before the autouse fixture mocks databricks.*) pin the response shape.
     def test_extract_text_only_message(self):
         app = _import_app()
-        message = SimpleNamespace(content="Gross written premium was 1.2m.", text=None, attachments=[])
-        assert app.extract_genie_answer(message) == {
-            "text": "Gross written premium was 1.2m.",
-            "sql": "",
-            "attachment_id": None,
-        }
+        message = genie.GenieMessage(
+            space_id="s",
+            conversation_id="c",
+            content="What is GWP?",  # the user's question, never the answer
+            message_id="m",
+            attachments=[genie.GenieAttachment(attachment_id="t1", text=genie.TextAttachment(content="GWP was 1.2m."))],
+        )
+        assert app.extract_genie_answer(message) == {"text": "GWP was 1.2m.", "sql": "", "attachment_id": None}
 
     def test_extract_sql_attachment(self):
         app = _import_app()
-        message = SimpleNamespace(
-            content="Here is the query.",
-            text=None,
-            attachments=[SimpleNamespace(attachment_id="att-1", query="SELECT 1")],
+        message = genie.GenieMessage(
+            space_id="s",
+            conversation_id="c",
+            content="Loss ratio by country?",
+            message_id="m",
+            attachments=[
+                genie.GenieAttachment(
+                    attachment_id="q1",
+                    query=genie.GenieQueryAttachment(query="SELECT 1", description="Loss ratio per country."),
+                )
+            ],
         )
         assert app.extract_genie_answer(message) == {
-            "text": "Here is the query.",
+            "text": "Loss ratio per country.",
             "sql": "SELECT 1",
-            "attachment_id": "att-1",
+            "attachment_id": "q1",
         }
 
     def test_extract_empty_message(self):
         app = _import_app()
-        message = SimpleNamespace(content=None, text=None, attachments=[])
+        message = genie.GenieMessage(space_id="s", conversation_id="c", content="hi", message_id="m")
         assert app.extract_genie_answer(message) == {"text": "", "sql": "", "attachment_id": None}
 
     def test_ask_genie_follow_up_uses_same_conversation(self):
@@ -203,11 +219,6 @@ class TestCompatibility:
         app = _import_app()
         assert "DIRECT" in app.MATCH_TYPE_OPTIONS
         assert "NO_MATCH" in app.MATCH_TYPE_OPTIONS
-
-    def test_escape_function(self):
-        app = _import_app()
-        assert app._esc("O'Brien") == "O''Brien"
-        assert app._esc(None) == ""
 
 
 class TestModuleSync:

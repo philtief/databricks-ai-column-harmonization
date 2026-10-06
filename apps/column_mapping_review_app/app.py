@@ -39,9 +39,10 @@ SELECT source_system, metric_name, metric_value
 FROM (
     SELECT source_system, metric_name, metric_value,
            ROW_NUMBER() OVER (
-               PARTITION BY source_system, metric_name ORDER BY run_id DESC
+               PARTITION BY source_system, metric_name ORDER BY evaluated_at DESC
            ) AS metric_rank
     FROM {CATALOG}.{SCHEMA}.mapping_eval_results
+    WHERE slice = 'ALL'
 )
 WHERE metric_rank = 1
 """
@@ -222,22 +223,6 @@ def inject_custom_css():
     )
 
 
-def confidence_pill(val: str) -> str:
-    """Return an HTML confidence pill."""
-    value = str(val).upper()
-    colors = {
-        "HIGH": (SUCCESS_GREEN, "#E8F5E9"),
-        "MEDIUM": (WARNING_ORANGE, "#FFF3E0"),
-        "LOW": (ERROR_RED, "#FFEBEE"),
-    }
-    foreground, background = colors.get(value, (TEXT_SECONDARY, BG_LIGHT))
-    return (
-        '<span style="display:inline-block; padding:2px 10px; border-radius:12px; '
-        f"font-size:0.78rem; font-weight:600; color:{foreground}; background:{background}; "
-        f'border:1px solid {foreground}22;">{value}</span>'
-    )
-
-
 def status_indicator(status: str) -> str:
     """Return a clean status label with colored dot."""
     normalized = str(status).upper()
@@ -311,13 +296,6 @@ def call_review_store(store_function, *args, **kwargs):
                 connection.close()
             get_review_connection.clear()
     raise RuntimeError("Unreachable review-store retry state")
-
-
-def _esc(value: str) -> str:
-    """Escape a string for display or logging; review writes use bound parameters."""
-    if value is None:
-        return ""
-    return str(value).replace("'", "''")
 
 
 def run_sql(statement: str, quiet: bool = False) -> pd.DataFrame:
@@ -461,8 +439,13 @@ def mandatory_pending_count(rows: list[dict[str, Any]]) -> int:
 
 
 def publish_is_ready(rows: list[dict[str, Any]]) -> bool:
-    """Publish is enabled only when no mandatory column is pending."""
-    return mandatory_pending_count(rows) == 0
+    """Same rule as the review gate (notebook 06): every mandatory column is reviewed and has a target."""
+    return all(
+        row["review_status"] != "PENDING"
+        and (row.get("final_global_column_name") or "").upper() not in ("", "NO_MATCH")
+        for row in rows
+        if row.get("mandatory_flag")
+    )
 
 
 def rows_with_status(rows: list[dict[str, Any]], statuses: set[str]) -> list[dict[str, Any]]:
@@ -791,45 +774,37 @@ def page_publish_readiness(country: str):
 
 
 def extract_genie_answer(message: Any) -> dict[str, Any]:
-    """Extract text, generated SQL, and attachment ID from a Genie message."""
-    text = getattr(message, "content", None)
-    if text is None:
-        text = getattr(message, "text", None)
-    if text is None and isinstance(message, dict):
-        text = message.get("content", message.get("text"))
+    """Text answer, generated SQL and query attachment ID from a Genie message.
 
-    attachments = getattr(message, "attachments", None)
-    if attachments is None and isinstance(message, dict):
-        attachments = message.get("attachments", [])
-
-    sql = getattr(message, "query", None)
-    attachment_id = None
-    for attachment in attachments or []:
-        attachment_id = getattr(attachment, "attachment_id", None)
-        if attachment_id is None and isinstance(attachment, dict):
-            attachment_id = attachment.get("attachment_id", attachment.get("id"))
-        sql = getattr(attachment, "query", None)
-        if sql is None and isinstance(attachment, dict):
-            sql = attachment.get("query", attachment.get("sql"))
-        if sql:
-            break
-    return {"text": text or "", "sql": sql or "", "attachment_id": attachment_id}
+    ``message.content`` is the user's question; Genie's answer lives in the attachments.
+    """
+    msg = message.as_dict() if hasattr(message, "as_dict") else message
+    answer = {"text": "", "sql": "", "attachment_id": None}
+    for attachment in msg.get("attachments") or []:
+        if attachment.get("text") and not answer["text"]:
+            answer["text"] = attachment["text"].get("content", "")
+        query = attachment.get("query")
+        if query and not answer["sql"]:
+            answer["sql"] = query.get("query", "")
+            answer["attachment_id"] = attachment.get("attachment_id")
+            answer["text"] = answer["text"] or query.get("description", "")
+    return answer
 
 
 def genie_attachment_frame(ws, answer: dict[str, Any], message: Any) -> pd.DataFrame:
-    """Fetch and convert the first Genie query attachment to a DataFrame."""
+    """Fetch the rows of the query attachment as a DataFrame."""
     if not answer.get("attachment_id"):
         return pd.DataFrame()
-    response = ws.genie.get_message_attachment_query_result(
+    statement = ws.genie.get_message_attachment_query_result(
         space_id=GENIE_SPACE_ID,
         conversation_id=message.conversation_id,
-        message_id=message.id,
+        message_id=message.message_id or message.id,
         attachment_id=answer["attachment_id"],
-    )
-    if response.result is None or response.result.data_array is None:
+    ).statement_response
+    if statement is None or statement.result is None or not statement.result.data_array:
         return pd.DataFrame()
-    columns = [column.name for column in response.manifest.schema.columns]
-    return pd.DataFrame(response.result.data_array, columns=columns)
+    columns = [column.name for column in statement.manifest.schema.columns]
+    return pd.DataFrame(statement.result.data_array, columns=columns)
 
 
 def ask_genie(ws, question: str, conversation_id: str | None):

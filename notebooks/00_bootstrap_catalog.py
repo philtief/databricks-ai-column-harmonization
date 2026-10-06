@@ -79,3 +79,7 @@ if schemas_df.count() == 0:
     raise Exception(f"FATAL: Schema '{catalog_name}.{schema_name}' was not created or is not visible.")
 
 print(f"Bootstrap complete: {catalog_name}.{schema_name}")
+
+import json
+
+dbutils.notebook.exit(json.dumps({"catalog": catalog_name, "schema": schema_name, "status": "ready"}))

@@ -131,11 +131,7 @@ print(f"DataFrame rows: {inv_df.count()}")
 # COMMAND ----------
 
 spark.sql(f"DELETE FROM {INV_TABLE} WHERE source_system = '{SOURCE_SYSTEM}'")
-(
-    inv_df.write.format("delta")
-    .mode("append")
-    .saveAsTable(INV_TABLE)
-)
+(inv_df.write.format("delta").mode("append").saveAsTable(INV_TABLE))
 
 final_count = spark.table(INV_TABLE).count()
 print(f"Merge complete. Total rows in {INV_TABLE}: {final_count}")

@@ -59,8 +59,10 @@ class TestQuoting:
         ("value", "expected"),
         [
             ("value", "'value'"),
-            ("o'clock", "'o''clock'"),
-            ("'; DROP TABLE x; --", "'''; DROP TABLE x; --'"),
+            # Spark joins adjacent literals ('o''clock' reads as "oclock"), so quotes need backslash escapes.
+            ("o'clock", r"'o\'clock'"),
+            ("'; DROP TABLE x; --", r"'\'; DROP TABLE x; --'"),
+            ("a\\b", r"'a\\b'"),
         ],
     )
     def test_sql_str_escapes_single_quotes(self, value, expected):

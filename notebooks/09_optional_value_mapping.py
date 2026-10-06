@@ -23,7 +23,7 @@ from uuid import uuid4
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructField, StructType, TimestampType
 
-from harmonization.llm import _sql_quote
+from harmonization.governance import sql_str
 from harmonization.value_mapping import build_value_prompt, categorical_targets, parse_value_response
 
 dbutils.widgets.removeAll()
@@ -82,10 +82,10 @@ for global_column, allowed_values in sorted(target_values.items()):
         print(f"  [{global_column}] No local values; skipped.")
         continue
 
-    prompt_sql = _sql_quote(build_value_prompt(global_column, allowed_values, local_values))
-    ai_result = spark.sql(
-        f"SELECT ai_query({_sql_quote(ai_endpoint)}, {prompt_sql}) AS ai_result"
-    ).collect()[0]["ai_result"]
+    prompt_sql = sql_str(build_value_prompt(global_column, allowed_values, local_values))
+    ai_result = spark.sql(f"SELECT ai_query({sql_str(ai_endpoint)}, {prompt_sql}) AS ai_result").collect()[0][
+        "ai_result"
+    ]
     try:
         proposed = parse_value_response(ai_result, allowed_values)
     except ValueError as error:
@@ -174,8 +174,9 @@ if approved_translations:
         ]
     )
     (
-        spark.createDataFrame(approved_translations, schema=dictionary_schema)
-        .createOrReplaceTempView("_value_dictionary_staged")
+        spark.createDataFrame(approved_translations, schema=dictionary_schema).createOrReplaceTempView(
+            "_value_dictionary_staged"
+        )
     )
     spark.sql(f"""
 MERGE INTO {VDICT_TABLE} AS tgt
@@ -226,16 +227,18 @@ for global_column in sorted(target_values):
     mapping_expression = None
     for mapping in mappings:
         condition = F.col(global_column) == F.lit(mapping["raw_value"])
-        mapping_expression = mapping_expression.when(condition, F.lit(mapping["harmonized_value"])) if mapping_expression else F.when(condition, F.lit(mapping["harmonized_value"]))
+        mapping_expression = (
+            mapping_expression.when(condition, F.lit(mapping["harmonized_value"]))
+            if mapping_expression
+            else F.when(condition, F.lit(mapping["harmonized_value"]))
+        )
     harmonized_df = harmonized_df.withColumn(
         global_column,
         mapping_expression.otherwise(F.col(global_column)),
     )
     translated_columns.append(global_column)
 
-harmonized_df = harmonized_df.withColumn(
-    "mapping_status", F.lit("APPROVED_COLUMN_AND_VALUE_MAPPING")
-)
+harmonized_df = harmonized_df.withColumn("mapping_status", F.lit("APPROVED_COLUMN_AND_VALUE_MAPPING"))
 
 final_count = harmonized_df.count()
 if translated_columns:

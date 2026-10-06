@@ -13,9 +13,7 @@ from harmonization.llm import (
     DEFAULT_PROMPT_TEMPLATE,
     DEFAULT_RESPONSE_KEYS,
     LLMConfig,
-    _sql_quote,
     build_ai_query_sql,
-    build_mapping_prompt,
     estimate_cost,
     load_llm_config,
     parse_mapping_response,
@@ -304,66 +302,6 @@ class TestRenderStaticPrompt:
         assert out == "hello world"
 
 
-# ----------------------------- build_mapping_prompt ---------------------------
-
-
-class TestBuildMappingPrompt:
-    def test_full_substitution(self):
-        prompt = build_mapping_prompt(
-            local_column_name="numero_poliza",
-            local_data_type="STRING",
-            sample_values=["P-001", "P-002"],
-            target_columns=["policy_id", "premium"],
-            ai_context="Spanish insurance.",
-        )
-        assert "numero_poliza" in prompt
-        assert "STRING" in prompt
-        assert "P-001; P-002" in prompt
-        assert "Spanish insurance." in prompt
-        assert "policy_id, premium, NO_MATCH" in prompt
-        assert "${" not in prompt
-
-    def test_uses_supplied_llm_config(self):
-        cfg = LLMConfig(prompt_template="Col=${local_column_name} Targets=${target_columns}")
-        prompt = build_mapping_prompt(
-            local_column_name="x",
-            local_data_type="INT",
-            sample_values=[],
-            target_columns=["t"],
-            ai_context="",
-            llm_config=cfg,
-        )
-        assert prompt == "Col=x Targets=t, NO_MATCH"
-
-    def test_empty_sample_values(self):
-        prompt = build_mapping_prompt(
-            local_column_name="x",
-            local_data_type="STRING",
-            sample_values=[],
-            target_columns=["a"],
-            ai_context="ctx",
-        )
-        # Should still substitute sample_values to empty string
-        assert "${sample_values}" not in prompt
-
-
-# ----------------------------- _sql_quote -------------------------------------
-
-
-class TestSqlQuote:
-    def test_simple_string(self):
-        assert _sql_quote("hello") == "'hello'"
-
-    def test_escapes_single_quote(self):
-        assert _sql_quote("it's") == "'it''s'"
-
-    def test_double_single_quote(self):
-        assert _sql_quote("a'b'c") == "'a''b''c'"
-
-    def test_empty_string(self):
-        assert _sql_quote("") == "''"
-
-
 # ----------------------------- template_to_sql_concat -------------------------
 
 
@@ -394,7 +332,7 @@ class TestTemplateToSqlConcat:
 
     def test_escapes_quote_in_literal(self):
         sql = template_to_sql_concat("it's: ${local_column_name}")
-        assert "'it''s: '" in sql
+        assert r"'it\'s: '" in sql
 
     def test_empty_string(self):
         assert template_to_sql_concat("") == "''"
@@ -443,7 +381,7 @@ class TestBuildAIQuerySQL:
             ai_context="",
             target_columns=["a"],
         )
-        assert "ai_query('end''point'" in sql
+        assert r"ai_query('end\'point'" in sql
 
     def test_target_columns_in_sql(self):
         sql = build_ai_query_sql(
@@ -657,17 +595,6 @@ class TestEndToEndIntegration:
 
     def test_full_loop_prompt_then_parse(self):
         cfg = LLMConfig()
-        prompt = build_mapping_prompt(
-            local_column_name="numero_poliza",
-            local_data_type="STRING",
-            sample_values=["P1", "P2"],
-            target_columns=["policy_id"],
-            ai_context="ctx",
-            llm_config=cfg,
-        )
-        # Prompt should be fully resolved (no placeholders left)
-        assert "${" not in prompt
-
         # Simulate the LLM responding correctly
         response = json.dumps(
             {

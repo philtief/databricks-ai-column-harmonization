@@ -29,6 +29,8 @@ import string
 from dataclasses import dataclass, field
 from typing import Any
 
+from harmonization.governance import sql_str
+
 DEFAULT_MATCH_TYPES = ("DIRECT", "SEMANTIC_TRANSLATION", "DERIVED", "NO_MATCH")
 DEFAULT_CONFIDENCE_LEVELS = ("HIGH", "MEDIUM", "LOW")
 DEFAULT_RESPONSE_KEYS = ("global_column_name", "match_type", "rationale", "confidence")
@@ -184,42 +186,6 @@ def render_static_prompt(
     return static_prompt
 
 
-def build_mapping_prompt(
-    *,
-    local_column_name: str,
-    local_data_type: str,
-    sample_values: list[str],
-    target_columns: list[str],
-    ai_context: str,
-    llm_config: LLMConfig | None = None,
-) -> str:
-    """Render the full prompt for a single column.
-
-    Useful for tests and for invoking the LLM outside the vectorized SQL path
-    (e.g. for ad-hoc experimentation).
-    """
-    cfg = llm_config or LLMConfig()
-    static_filled = render_static_prompt(
-        cfg.prompt_template,
-        ai_context=ai_context,
-        target_columns=target_columns,
-        match_types=cfg.match_types,
-        confidence_levels=cfg.confidence_levels,
-        response_keys=cfg.response_keys,
-        extra_context=cfg.extra_context,
-    )
-    return string.Template(static_filled).safe_substitute(
-        local_column_name=local_column_name,
-        local_data_type=local_data_type,
-        sample_values="; ".join(sample_values),
-    )
-
-
-def _sql_quote(literal: str) -> str:
-    """Wrap a string literal for inclusion in a SQL CONCAT()."""
-    return "'" + literal.replace("'", "''") + "'"
-
-
 def template_to_sql_concat(static_filled_template: str) -> str:
     """Convert a prompt template (static placeholders already filled) into a
     Spark SQL ``CONCAT(...)`` expression with the dynamic placeholders turned
@@ -238,14 +204,14 @@ def template_to_sql_concat(static_filled_template: str) -> str:
                 "Did you forget to call render_static_prompt() first?"
             )
         if match.start() > last:
-            parts.append(_sql_quote(static_filled_template[last : match.start()]))
+            parts.append(sql_str(static_filled_template[last : match.start()]))
         if name == "sample_values":
             parts.append("array_join(sample_values, '; ')")
         else:
             parts.append(name)
         last = match.end()
     if last < len(static_filled_template):
-        parts.append(_sql_quote(static_filled_template[last:]))
+        parts.append(sql_str(static_filled_template[last:]))
     if not parts:
         parts.append("''")
     if len(parts) == 1:
@@ -278,7 +244,7 @@ def build_ai_query_sql(
         approved_examples=approved_examples,
     )
     prompt_concat = template_to_sql_concat(static_filled)
-    endpoint_sql = _sql_quote(llm_config.endpoint)
+    endpoint_sql = sql_str(llm_config.endpoint)
 
     return (
         "SELECT\n"

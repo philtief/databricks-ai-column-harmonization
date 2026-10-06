@@ -31,8 +31,11 @@ def quote_ident(name: str) -> str:
 
 
 def sql_str(value: str) -> str:
-    """Return a single-quoted SQL string literal."""
-    return f"'{value.replace(chr(39), chr(39) * 2)}'"
+    """Return a single-quoted Spark SQL string literal.
+
+    Spark joins adjacent literals, so 'it''s' reads as "its"; backslash escapes keep the quote.
+    """
+    return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 def _tags(tags: dict[str, Any]) -> str:

@@ -9,7 +9,6 @@
 
 import datetime as _dt
 
-import yaml
 from pyspark.sql.types import LongType, StringType, StructField, StructType, TimestampType
 
 # Schema for workflow_run_metrics (used by every notebook)
@@ -46,27 +45,11 @@ def log_run_metric(spark_session, ops_table, run_id, task_name, status, started_
 
 
 def load_harmonization_config():
-    """Load config/harmonization_config.yaml from the bundle workspace path."""
-    try:
-        # When deployed via DAB, notebooks are at {root_path}/files/notebooks/
-        # Config is at {root_path}/files/config/
-        notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-        parent_dir = "/".join(notebook_path.rsplit("/", 1)[:-1])
-        config_ws_path = f"{parent_dir}/../config/harmonization_config.yaml"
+    """Load and validate config/harmonization_config.yaml from the deployed bundle (next to notebooks/)."""
+    from harmonization.config import load_config  # src/ is on sys.path after the cell below runs
 
-        # Read from workspace filesystem
-        # On Databricks, workspace files are accessible via /Workspace prefix
-        local_path = f"/Workspace{config_ws_path}"
-        with open(local_path) as f:
-            config = yaml.safe_load(f)
-        print(f"Config loaded from {config_ws_path}")
-        return config
-    except Exception as e:
-        raise RuntimeError(
-            f"FATAL: Could not load harmonization config ({e}). "
-            "Ensure config/harmonization_config.yaml is deployed with the bundle. "
-            "See config/harmonization_config.yaml.template for the expected format."
-        ) from e
+    notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+    return load_config(f"/Workspace{notebook_path.rsplit('/', 1)[0]}/../config/harmonization_config.yaml")
 
 
 # COMMAND ----------

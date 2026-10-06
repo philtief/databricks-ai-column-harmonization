@@ -1,18 +1,10 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 09 — Optional Value Mapping
+# MAGIC # 09 — Value Mapping
 # MAGIC
-# MAGIC **SECONDARY OPTIONAL STEP — Value Translation**
-# MAGIC
-# MAGIC This notebook applies categorical value translations (source values to harmonized values)
-# MAGIC to the already-harmonized target table, **if and only if** approved entries exist in
-# MAGIC `value_mapping_dictionary`.
-# MAGIC
-# MAGIC If the dictionary is empty, the notebook exits gracefully without modifying the
-# MAGIC harmonized table. The harmonized table is fully usable with column mapping alone.
-# MAGIC
-# MAGIC **Value translation is NOT the primary feature.** The primary feature is column-level
-# MAGIC schema mapping (notebooks 03-08).
+# MAGIC Translates local categorical values against the configured global allow-lists,
+# AUTO-approves safe translations, writes candidates, and applies active translations
+# to this country's harmonized rows.
 
 # COMMAND ----------
 
@@ -24,144 +16,244 @@
 
 # COMMAND ----------
 
+import datetime as _dt
+import json
+from uuid import uuid4
+
+from pyspark.sql import functions as F
+from pyspark.sql.types import StringType, StructField, StructType, TimestampType
+
+from harmonization.llm import _sql_quote
+from harmonization.value_mapping import build_value_prompt, categorical_targets, parse_value_response
+
 dbutils.widgets.removeAll()
 dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("source_country", "ES", "Source Country")
 dbutils.widgets.text("ai_endpoint", "databricks-gpt-5-2", "AI Endpoint")
 dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
+source_country = dbutils.widgets.get("source_country").strip()
 ai_endpoint = dbutils.widgets.get("ai_endpoint").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 
 DB = f"`{catalog_name}`.`{schema_name}`"
 _cfg = load_harmonization_config()
-_refs = get_table_refs(_cfg, DB)
+_refs = get_table_refs(_cfg, DB, source_country)
 HARM_TABLE = _refs["harm_table"]
 VDICT_TABLE = _refs["vdict_table"]
 VCAND_TABLE = _refs["vcand_table"]
 OPS_TABLE = _refs["ops_table"]
-SEMANTIC_FIELDS = _cfg["semantic_fields"]
+SOURCE_SYSTEM = _refs["source_system"]
 
-print(f"Config: {DB}")
-
-# COMMAND ----------
-
-# MAGIC %md ## STEP 2 — Imports
-
-# COMMAND ----------
-
-import datetime as _dt
-from uuid import uuid4
-
-from pyspark.sql import functions as F
+print(f"Config: {DB}, country={source_country}, ai_endpoint={ai_endpoint}")
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
+target_values = categorical_targets(_cfg)
+now = _dt.datetime.utcnow()
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 3 — Check for Active Value Mapping Entries
+# MAGIC %md ## Propose Value Translations
 
 # COMMAND ----------
 
-active_vdict_count = spark.sql(f"""
-SELECT COUNT(*) AS cnt
-FROM {VDICT_TABLE}
-WHERE active_flag = TRUE
-""").collect()[0]["cnt"]
+translations = []
+candidate_rows = []
+ai_error_count = 0
 
-print(f"Active value mapping entries: {active_vdict_count}")
-
-# COMMAND ----------
-
-# MAGIC %md ## STEP 4 — Branch: Empty Dictionary (Skip)
-
-# COMMAND ----------
-
-if active_vdict_count == 0:
-    print("No approved value mappings found. Column mapping only — values remain as sourced.")
-
-    log_run_metric(
-        spark,
-        OPS_TABLE,
-        RUN_ID,
-        "optional_value_mapping",
-        "INFO",
-        _start,
-        0,
-        "Skipped: no active entries in value_mapping_dictionary. Values remain as sourced. Column mapping is complete.",
-    )
-
-    dbutils.notebook.exit("Skipped: no active value mappings.")
-
-# COMMAND ----------
-
-# MAGIC %md ## STEP 5 — Apply Value Translations (Dictionary Not Empty)
-
-# COMMAND ----------
-
-harm_df = spark.table(HARM_TABLE)
-updates_applied = []
-
-for field in SEMANTIC_FIELDS:
-    # Check if this field has any active value mappings
-    field_mappings = spark.sql(f"""
-        SELECT raw_value, harmonized_value
-        FROM {VDICT_TABLE}
-        WHERE source_field = '{field}'
-          AND active_flag = TRUE
-    """).collect()
-
-    if not field_mappings:
-        print(f"  [{field}] No active value mappings — field values unchanged.")
+for global_column, allowed_values in sorted(target_values.items()):
+    if global_column not in spark.table(HARM_TABLE).columns:
+        print(f"  [{global_column}] Not present in harmonized table; skipped.")
         continue
 
-    print(f"  [{field}] Applying {len(field_mappings)} value translation(s) ...")
+    local_df = spark.sql(f"""
+        SELECT DISTINCT CAST(`{global_column}` AS STRING) AS local_value
+        FROM {HARM_TABLE}
+        WHERE source_country = '{source_country}'
+          AND `{global_column}` IS NOT NULL
+        ORDER BY local_value
+    """)
+    local_values = [row["local_value"] for row in local_df.collect()]
+    if not local_values:
+        print(f"  [{global_column}] No local values; skipped.")
+        continue
 
-    # Build a mapping expression using CASE WHEN
-    mapping_expr = None
-    for row in field_mappings:
-        raw_val = row["raw_value"]
-        harm_val = row["harmonized_value"]
-        condition = F.col(field) == F.lit(raw_val)
-        if mapping_expr is None:
-            mapping_expr = F.when(condition, F.lit(harm_val))
+    prompt_sql = _sql_quote(build_value_prompt(global_column, allowed_values, local_values))
+    ai_result = spark.sql(
+        f"SELECT ai_query({_sql_quote(ai_endpoint)}, {prompt_sql}) AS ai_result"
+    ).collect()[0]["ai_result"]
+    try:
+        proposed = parse_value_response(ai_result, allowed_values)
+    except ValueError as error:
+        ai_error_count += 1
+        print(f"  [{global_column}] AI response invalid: {error}; values reported as unmapped.")
+        proposed = {local_value: None for local_value in local_values}
+
+    for local_value in local_values:
+        proposed_value = proposed.get(local_value)
+        approved = proposed_value is not None
+        if approved:
+            approved_by = "auto:allowed-list"
+            print(f"  {global_column}: {local_value!r} -> {proposed_value!r} (approved yes)")
         else:
-            mapping_expr = mapping_expr.when(condition, F.lit(harm_val))
+            approved_by = None
+            print(f"  {global_column}: {local_value!r} -> null (approved no)")
 
-    if mapping_expr is not None:
-        # Keep original value where no mapping found
-        mapping_expr = mapping_expr.otherwise(F.col(field))
-        harm_df = harm_df.withColumn(field, mapping_expr)
-        updates_applied.append(field)
+        translations.append((global_column, local_value, proposed_value, approved))
+        candidate_rows.append(
+            (
+                SOURCE_SYSTEM,
+                global_column,
+                local_value,
+                proposed_value,
+                None,
+                "HIGH" if approved else "LOW",
+                None,
+                "APPROVED" if approved else "PENDING",
+                proposed_value,
+                approved_by,
+                now,
+                None,
+                now,
+                now,
+            )
+        )
 
-print(f"Fields with value translations applied: {updates_applied}")
+print(f"Generated {len(candidate_rows)} value mapping candidates; AI errors: {ai_error_count}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 6 — Re-write Harmonized Table
+# MAGIC %md ## Write Candidates and Approved Dictionary
 
 # COMMAND ----------
 
-if updates_applied:
-    # Update mapping_status to reflect value mapping was also applied
-    harm_df = harm_df.withColumn("mapping_status", F.lit("APPROVED_COLUMN_AND_VALUE_MAPPING"))
+candidate_schema = StructType(
+    [
+        StructField("source_system", StringType(), False),
+        StructField("source_field", StringType(), False),
+        StructField("raw_value", StringType(), False),
+        StructField("proposed_harmonized_value", StringType(), True),
+        StructField("proposed_description", StringType(), True),
+        StructField("confidence", StringType(), True),
+        StructField("ai_error_status", StringType(), True),
+        StructField("review_status", StringType(), True),
+        StructField("final_harmonized_value", StringType(), True),
+        StructField("reviewed_by", StringType(), True),
+        StructField("reviewed_at", TimestampType(), True),
+        StructField("review_comment", StringType(), True),
+        StructField("created_at", TimestampType(), True),
+        StructField("updated_at", TimestampType(), True),
+    ]
+)
 
-    (harm_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(HARM_TABLE))
+spark.sql(f"DELETE FROM {VCAND_TABLE} WHERE source_system = '{SOURCE_SYSTEM}'")
+if candidate_rows:
+    (
+        spark.createDataFrame(candidate_rows, schema=candidate_schema)
+        .write.format("delta")
+        .mode("append")
+        .saveAsTable(VCAND_TABLE)
+    )
 
-    final_count = spark.table(HARM_TABLE).count()
-    print(f"Written {final_count:,} rows with value translations applied")
+approved_translations = [
+    (source_field, local_value, proposed_value)
+    for source_field, local_value, proposed_value, approved in translations
+    if approved
+]
 
-    display(spark.table(HARM_TABLE).select(*SEMANTIC_FIELDS).distinct().orderBy(SEMANTIC_FIELDS[0]).limit(20))
+if approved_translations:
+    dictionary_schema = StructType(
+        [
+            StructField("source_field", StringType(), False),
+            StructField("raw_value", StringType(), False),
+            StructField("harmonized_value", StringType(), False),
+        ]
+    )
+    (
+        spark.createDataFrame(approved_translations, schema=dictionary_schema)
+        .createOrReplaceTempView("_value_dictionary_staged")
+    )
+    spark.sql(f"""
+MERGE INTO {VDICT_TABLE} AS tgt
+USING _value_dictionary_staged AS src
+ON tgt.source_system = '{SOURCE_SYSTEM}'
+   AND tgt.source_field = src.source_field
+   AND tgt.raw_value = src.raw_value
+WHEN MATCHED AND (tgt.approved_by = 'auto:allowed-list' OR tgt.harmonized_value IS NULL) THEN UPDATE SET
+  tgt.harmonized_value = src.harmonized_value,
+  tgt.approval_status = 'APPROVED',
+  tgt.approved_by = 'auto:allowed-list',
+  tgt.approved_at = CAST('{now.isoformat()}' AS TIMESTAMP),
+  tgt.mapping_version = '{mapping_version}',
+  tgt.active_flag = TRUE,
+  tgt.updated_at = CAST('{now.isoformat()}' AS TIMESTAMP)
+WHEN NOT MATCHED THEN INSERT (
+  source_system, source_field, raw_value, harmonized_value, approval_status,
+  approved_by, approved_at, mapping_version, active_flag, created_at, updated_at
+) VALUES (
+  '{SOURCE_SYSTEM}', src.source_field, src.raw_value, src.harmonized_value, 'APPROVED',
+  'auto:allowed-list', CAST('{now.isoformat()}' AS TIMESTAMP), '{mapping_version}', TRUE,
+  CAST('{now.isoformat()}' AS TIMESTAMP), CAST('{now.isoformat()}' AS TIMESTAMP)
+)
+""")
+
+print(f"Auto-approved value mappings: {len(approved_translations)}")
+
+# COMMAND ----------
+
+# MAGIC %md ## Apply Active Translations
+
+# COMMAND ----------
+
+harmonized_df = spark.table(HARM_TABLE).where(F.col("source_country") == source_country)
+translated_columns = []
+
+for global_column in sorted(target_values):
+    mappings = spark.sql(f"""
+        SELECT raw_value, harmonized_value
+        FROM {VDICT_TABLE}
+        WHERE source_system = '{SOURCE_SYSTEM}'
+          AND source_field = '{global_column}'
+          AND active_flag = TRUE
+    """).collect()
+    if not mappings:
+        continue
+
+    mapping_expression = None
+    for mapping in mappings:
+        condition = F.col(global_column) == F.lit(mapping["raw_value"])
+        mapping_expression = mapping_expression.when(condition, F.lit(mapping["harmonized_value"])) if mapping_expression else F.when(condition, F.lit(mapping["harmonized_value"]))
+    harmonized_df = harmonized_df.withColumn(
+        global_column,
+        mapping_expression.otherwise(F.col(global_column)),
+    )
+    translated_columns.append(global_column)
+
+harmonized_df = harmonized_df.withColumn(
+    "mapping_status", F.lit("APPROVED_COLUMN_AND_VALUE_MAPPING")
+)
+
+final_count = harmonized_df.count()
+if translated_columns:
+    (
+        harmonized_df.write.format("delta")
+        .mode("overwrite")
+        .option("replaceWhere", f"source_country = '{source_country}'")
+        .saveAsTable(HARM_TABLE)
+    )
 else:
-    final_count = spark.table(HARM_TABLE).count()
-    print("No value translations were applied. Table unchanged.")
+    print("No active value translations; harmonized table unchanged.")
+
+final_table_count = spark.table(HARM_TABLE).count()
+print(f"Translated columns: {translated_columns}; country rows: {final_count:,}; total rows: {final_table_count:,}")
 
 # COMMAND ----------
 
-# MAGIC %md ## STEP 7 — Log to workflow_run_metrics
+# MAGIC %md ## Log and Exit
 
 # COMMAND ----------
 
@@ -169,9 +261,22 @@ log_run_metric(
     spark,
     OPS_TABLE,
     RUN_ID,
-    "optional_value_mapping",
+    "value_mapping",
     "SUCCEEDED",
     _start,
     final_count,
-    f"Value translations applied to {len(updates_applied)} field(s): {updates_applied}. Active dict entries: {active_vdict_count}.",
+    f"Generated {len(candidate_rows)} value candidates, auto-approved {len(approved_translations)}, "
+    f"and translated {len(translated_columns)} columns.",
 )
+
+summary = {
+    "source_country": source_country,
+    "source_system": SOURCE_SYSTEM,
+    "categorical_columns": len(target_values),
+    "value_candidates": len(candidate_rows),
+    "auto_approved": len(approved_translations),
+    "unmapped_values": sum(1 for translation in translations if not translation[3]),
+    "ai_errors": ai_error_count,
+    "translated_columns": len(translated_columns),
+}
+dbutils.notebook.exit(json.dumps(summary))

@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 
-def get_table_refs(config: dict[str, Any], db_prefix: str) -> dict[str, str]:
+def get_table_refs(config: dict[str, Any], db_prefix: str, source_country: str) -> dict[str, str]:
     """Return the dict of qualified Delta table references used by the workflow.
 
     Args:
@@ -23,14 +23,14 @@ def get_table_refs(config: dict[str, Any], db_prefix: str) -> dict[str, str]:
         A dict whose values are fully qualified, backtick-quoted table or
         view references safe to interpolate directly into Spark SQL strings.
     """
-    src_table = config["source_context"]["source_table"]
+    source_context = config["sources"][source_country]
+    src_table = source_context["source_table"]
     tgt_table = config["target_model"]["table_name"]
-    src_system = config["source_context"]["source_system"]
 
     return {
         "raw_table": f"{db_prefix}.`{src_table}`",
         "harm_table": f"{db_prefix}.`{tgt_table}`",
-        "source_system": src_system,
+        "source_system": source_context["source_system"],
         "source_table_name": src_table,
         "target_table_name": tgt_table,
         "inv_table": f"{db_prefix}.`source_column_inventory`",

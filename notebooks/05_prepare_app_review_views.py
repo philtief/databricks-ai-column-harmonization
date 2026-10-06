@@ -2,11 +2,16 @@
 # MAGIC %md
 # MAGIC # 05 — Prepare App Review Views
 # MAGIC
-# MAGIC Refreshes the review views used by the Column Mapping Review Databricks App
-# MAGIC and prints a summary of current mapping proposals ready for review.
-# MAGIC
-# MAGIC After this task completes, business users should open the Databricks App to
-# MAGIC review and approve/correct/reject the AI-proposed column mappings.
+# MAGIC Refreshes the review views, pushes this country's candidates to the Lakebase
+# MAGIC review queue, and prints the operational status summary.
+
+# COMMAND ----------
+
+# MAGIC %pip install "psycopg[binary]>=3.2" "databricks-sdk>=0.81" -q
+
+# COMMAND ----------
+
+dbutils.library.restartPython()
 
 # COMMAND ----------
 
@@ -18,15 +23,33 @@
 
 # COMMAND ----------
 
+import json
+
 dbutils.widgets.removeAll()
 dbutils.widgets.text("catalog_name", "your_catalog", "Catalog Name")
 dbutils.widgets.text("schema_name", "harmonizing_agent", "Schema Name")
+dbutils.widgets.text("source_country", "ES", "Source Country")
+dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
+dbutils.widgets.text("lakebase_endpoint", "", "Lakebase Endpoint")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
-DB = f"`{catalog_name}`.`{schema_name}`"
+source_country = dbutils.widgets.get("source_country").strip()
+mapping_version = dbutils.widgets.get("mapping_version").strip()
+lakebase_endpoint = dbutils.widgets.get("lakebase_endpoint").strip()
 
-print(f"Config: {DB}")
+if not lakebase_endpoint:
+    raise ValueError("lakebase_endpoint must not be empty")
+
+DB = f"`{catalog_name}`.`{schema_name}`"
+_cfg = load_harmonization_config()
+_refs = get_table_refs(_cfg, DB, source_country)
+CAND_TABLE = _refs["cand_table"]
+SOURCE_SYSTEM = _refs["source_system"]
+SOURCE_TABLE = _refs["source_table_name"]
+OPS_TABLE = _refs["ops_table"]
+
+print(f"Config: {DB}, country={source_country}, endpoint={lakebase_endpoint}")
 
 # COMMAND ----------
 
@@ -34,8 +57,11 @@ print(f"Config: {DB}")
 
 # COMMAND ----------
 
-import datetime as _dt
 from uuid import uuid4
+
+from databricks.sdk import WorkspaceClient
+
+from harmonization.review_store import connect, ensure_schema, status_summary, upsert_queue
 
 RUN_ID = str(uuid4())
 _start = _dt.datetime.utcnow()
@@ -90,13 +116,14 @@ execute_ddl(
     f"""
 CREATE OR REPLACE VIEW {DB}.`vw_mapping_review_summary` AS
 SELECT
+  source_system,
   review_status,
   mandatory_flag,
   confidence,
   COUNT(*) AS count,
   SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
 FROM {DB}.`column_mapping_candidates`
-GROUP BY review_status, mandatory_flag, confidence
+GROUP BY source_system, review_status, mandatory_flag, confidence
 """,
 )
 
@@ -105,7 +132,8 @@ execute_ddl(
     f"""
 CREATE OR REPLACE VIEW {DB}.`vw_publish_readiness` AS
 WITH mandatory AS (
-  SELECT local_column_name AS mandatory_column_name,
+  SELECT source_system,
+         local_column_name AS mandatory_column_name,
          review_status,
          final_global_column_name,
          final_match_type,
@@ -117,7 +145,7 @@ WITH mandatory AS (
   WHERE mandatory_flag = TRUE
 )
 SELECT * FROM mandatory
-ORDER BY is_ready ASC, mandatory_column_name
+ORDER BY is_ready ASC, source_system, mandatory_column_name
 """,
 )
 
@@ -153,6 +181,7 @@ SELECT
   g.semantic_group,
   g.required_flag,
   g.business_definition,
+  c.source_system,
   c.local_column_name,
   c.proposed_match_type,
   c.confidence,
@@ -171,9 +200,59 @@ ORDER BY g.semantic_group, g.global_column_name
 """,
 )
 
-print(
-    f"\nViews recreated: {sum(1 for r in results if r[0] == 'OK')} OK, {sum(1 for r in results if r[0] == 'ERROR')} ERROR"
-)
+print(f"Views recreated: {sum(result[0] == 'OK' for result in results)} OK")
+
+# COMMAND ----------
+
+# MAGIC %md ## Push Review Queue to Lakebase
+
+# COMMAND ----------
+
+now = _dt.datetime.utcnow()
+candidate_rows = spark.sql(f"""
+SELECT local_column_name, local_data_type, local_sample_values,
+       proposed_global_column_name, proposed_match_type, mapping_rationale,
+       confidence, mandatory_flag
+FROM {CAND_TABLE}
+WHERE source_system = '{SOURCE_SYSTEM}'
+ORDER BY local_column_name
+""").collect()
+
+queue_rows = [
+    {
+        "source_system": SOURCE_SYSTEM,
+        "local_column_name": row["local_column_name"],
+        "local_data_type": row["local_data_type"],
+        "local_sample_values": list(row["local_sample_values"] or []),
+        "proposed_global_column_name": row["proposed_global_column_name"],
+        "proposed_match_type": row["proposed_match_type"],
+        "mapping_rationale": row["mapping_rationale"],
+        "confidence": row["confidence"],
+        "mandatory_flag": bool(row["mandatory_flag"]),
+        "mapping_version": mapping_version,
+        "published_at": now,
+        "updated_at": now,
+    }
+    for row in candidate_rows
+]
+
+workspace_client = WorkspaceClient()
+conn = connect(workspace_client, lakebase_endpoint)
+try:
+    ensure_schema(conn)
+    rows_pushed = upsert_queue(conn, queue_rows)
+    conn.commit()
+    lakebase_status = status_summary(conn)
+finally:
+    conn.close()
+
+print(f"Queue rows pushed: {rows_pushed}")
+print("Status summary:")
+for status_row in lakebase_status:
+    print(
+        f"  {status_row['source_system']} {status_row['review_status']} "
+        f"mandatory={status_row['mandatory_flag']} count={status_row['count']}"
+    )
 
 # COMMAND ----------
 
@@ -182,80 +261,70 @@ print(
 # COMMAND ----------
 
 summary_df = spark.sql(f"""
-SELECT
-  review_status,
-  mandatory_flag,
-  confidence,
-  COUNT(*) AS count,
-  SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
-FROM {DB}.`column_mapping_candidates`
+SELECT review_status, mandatory_flag, confidence, COUNT(*) AS count,
+       SUM(CASE WHEN ai_error_status IS NOT NULL THEN 1 ELSE 0 END) AS ai_error_count
+FROM {CAND_TABLE}
+WHERE source_system = '{SOURCE_SYSTEM}'
 GROUP BY review_status, mandatory_flag, confidence
 ORDER BY mandatory_flag DESC, review_status, confidence
 """)
-
 display(summary_df)
 
-# COMMAND ----------
-
-# MAGIC %md ## All Candidates with Current Review Status
-
-# COMMAND ----------
-
-all_candidates_df = spark.sql(f"""
-SELECT
-  local_column_name,
-  local_data_type,
-  proposed_global_column_name,
-  proposed_match_type,
-  confidence,
-  ai_error_status,
-  review_status,
-  mandatory_flag,
-  app_decision_source,
-  reviewed_by,
-  reviewed_at
-FROM {DB}.`column_mapping_candidates`
-ORDER BY mandatory_flag DESC, review_status, local_column_name
-""")
-
-display(all_candidates_df)
-
-total_count = all_candidates_df.count()
-pending_count = spark.sql(
-    f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE review_status = 'PENDING'"
-).collect()[0]["cnt"]
-approved_count = spark.sql(
-    f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE review_status IN ('APPROVED','CORRECTED')"
-).collect()[0]["cnt"]
-mandatory_pending = spark.sql(
-    f"SELECT COUNT(*) AS cnt FROM {DB}.`column_mapping_candidates` WHERE mandatory_flag = TRUE AND review_status = 'PENDING'"
-).collect()[0]["cnt"]
+total_count = len(candidate_rows)
+pending_count = spark.sql(f"""
+SELECT COUNT(*) AS cnt
+FROM {CAND_TABLE}
+WHERE source_system = '{SOURCE_SYSTEM}' AND review_status = 'PENDING'
+""").collect()[0]["cnt"]
+approved_count = spark.sql(f"""
+SELECT COUNT(*) AS cnt
+FROM {CAND_TABLE}
+WHERE source_system = '{SOURCE_SYSTEM}' AND review_status IN ('APPROVED','CORRECTED')
+""").collect()[0]["cnt"]
+mandatory_pending = spark.sql(f"""
+SELECT COUNT(*) AS cnt
+FROM {CAND_TABLE}
+WHERE source_system = '{SOURCE_SYSTEM}' AND mandatory_flag = TRUE AND review_status = 'PENDING'
+""").collect()[0]["cnt"]
 
 print(
-    f"Total: {total_count}, Pending: {pending_count}, Approved/Corrected: {approved_count}, Mandatory pending: {mandatory_pending}"
+    f"Total: {total_count}, Pending: {pending_count}, "
+    f"Approved/Corrected: {approved_count}, Mandatory pending: {mandatory_pending}"
 )
 
 # COMMAND ----------
 
-# MAGIC %md ## Publish Readiness (Mandatory Columns)
+# MAGIC %md ## Publish Readiness
 
 # COMMAND ----------
 
-display(spark.sql(f"SELECT * FROM {DB}.`vw_publish_readiness`"))
+display(spark.sql(f"SELECT * FROM {DB}.`vw_publish_readiness` WHERE source_system = '{SOURCE_SYSTEM}'"))
 
 # COMMAND ----------
 
-# MAGIC %md ## Log to workflow_run_metrics
+# MAGIC %md ## Log and Exit
 
 # COMMAND ----------
 
 log_run_metric(
     spark,
-    f"{DB}.`workflow_run_metrics`",
+    OPS_TABLE,
     RUN_ID,
     "prepare_app_review_views",
     "SUCCEEDED",
     _start,
-    total_count,
-    f"Refreshed 5 review views. Total candidates: {total_count}. Pending: {pending_count}. Mandatory pending: {mandatory_pending}.",
+    rows_pushed,
+    f"Refreshed 5 review views and pushed {rows_pushed} queue rows for {SOURCE_SYSTEM}.",
 )
+
+summary = {
+    "source_country": source_country,
+    "source_system": SOURCE_SYSTEM,
+    "source_table": SOURCE_TABLE,
+    "candidates": total_count,
+    "pending": pending_count,
+    "approved_or_corrected": approved_count,
+    "mandatory_pending": mandatory_pending,
+    "rows_pushed": rows_pushed,
+}
+dbutils.notebook.exit(json.dumps(summary))

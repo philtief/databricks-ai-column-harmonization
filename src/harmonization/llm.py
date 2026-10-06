@@ -136,6 +136,7 @@ def render_static_prompt(
     response_keys: tuple[str, ...],
     extra_context: dict[str, str] | None = None,
     target_with_no_match: bool = True,
+    approved_examples: list[tuple[str, str]] | None = None,
 ) -> str:
     """Substitute the static placeholders in the template.
 
@@ -168,12 +169,19 @@ def render_static_prompt(
                 f"Known static placeholders: {sorted(static_vars.keys())}."
             )
 
-    # We use a custom Template subclass so that {dynamic} placeholders aren't
-    # treated as missing — we want to leave them in place for SQL substitution.
-    class _PartialTemplate(string.Template):
-        idpattern = "|".join(re.escape(k) for k in static_vars)
+    template_pattern = "|".join(re.escape(name) for name in (*static_vars, *_DYNAMIC_PLACEHOLDERS))
 
-    return _PartialTemplate(template).safe_substitute(static_vars)
+    # We use a custom Template subclass so that dynamic placeholders aren't
+    # treated as missing; they remain in place for SQL substitution.
+    class _PartialTemplate(string.Template):
+        idpattern = template_pattern
+
+    static_prompt = _PartialTemplate(template).safe_substitute(static_vars)
+    if approved_examples:
+        static_prompt += "\nPreviously approved mappings from other subsidiaries (local -> global):\n"
+        static_prompt += "\n".join(f"{source} -> {target}" for source, target in approved_examples)
+
+    return static_prompt
 
 
 def build_mapping_prompt(
@@ -251,6 +259,7 @@ def build_ai_query_sql(
     llm_config: LLMConfig,
     ai_context: str,
     target_columns: list[str],
+    approved_examples: list[tuple[str, str]] | None = None,
 ) -> str:
     """Build the full vectorized ``ai_query`` SQL statement.
 
@@ -266,6 +275,7 @@ def build_ai_query_sql(
         confidence_levels=llm_config.confidence_levels,
         response_keys=llm_config.response_keys,
         extra_context=llm_config.extra_context,
+        approved_examples=approved_examples,
     )
     prompt_concat = template_to_sql_concat(static_filled)
     endpoint_sql = _sql_quote(llm_config.endpoint)

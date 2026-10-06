@@ -10,9 +10,9 @@ from harmonization.tables import get_table_refs
 @pytest.fixture
 def cfg():
     return {
-        "source_context": {
-            "source_system": "DEMO_RAW",
-            "source_table": "demo_raw_table",
+        "sources": {
+            "ES": {"source_system": "ES_PROPERTY_RAW", "source_table": "bronze_property_monthly_es"},
+            "IT": {"source_system": "IT_PROPERTY_RAW", "source_table": "bronze_property_monthly_it"},
         },
         "target_model": {"table_name": "demo_clean_table"},
     }
@@ -25,28 +25,28 @@ def db_prefix():
 
 class TestGetTableRefs:
     def test_returns_dict(self, cfg, db_prefix):
-        refs = get_table_refs(cfg, db_prefix)
+        refs = get_table_refs(cfg, db_prefix, "ES")
         assert isinstance(refs, dict)
 
-    def test_raw_table_uses_source_table(self, cfg, db_prefix):
-        refs = get_table_refs(cfg, db_prefix)
-        assert refs["raw_table"] == "`my_cat`.`my_schema`.`demo_raw_table`"
+    def test_raw_table_uses_country_source_table(self, cfg, db_prefix):
+        refs = get_table_refs(cfg, db_prefix, "IT")
+        assert refs["raw_table"] == "`my_cat`.`my_schema`.`bronze_property_monthly_it`"
 
     def test_harm_table_uses_target_table(self, cfg, db_prefix):
-        refs = get_table_refs(cfg, db_prefix)
+        refs = get_table_refs(cfg, db_prefix, "ES")
         assert refs["harm_table"] == "`my_cat`.`my_schema`.`demo_clean_table`"
 
     def test_source_system_passes_through(self, cfg, db_prefix):
-        refs = get_table_refs(cfg, db_prefix)
-        assert refs["source_system"] == "DEMO_RAW"
+        refs = get_table_refs(cfg, db_prefix, "ES")
+        assert refs["source_system"] == "ES_PROPERTY_RAW"
 
     def test_unqualified_table_names_present(self, cfg, db_prefix):
-        refs = get_table_refs(cfg, db_prefix)
-        assert refs["source_table_name"] == "demo_raw_table"
+        refs = get_table_refs(cfg, db_prefix, "ES")
+        assert refs["source_table_name"] == "bronze_property_monthly_es"
         assert refs["target_table_name"] == "demo_clean_table"
 
     def test_all_required_keys_present(self, cfg, db_prefix):
-        refs = get_table_refs(cfg, db_prefix)
+        refs = get_table_refs(cfg, db_prefix, "ES")
         expected_keys = {
             "raw_table",
             "harm_table",
@@ -82,11 +82,11 @@ class TestGetTableRefs:
         ],
     )
     def test_control_table_names(self, cfg, db_prefix, key, expected_table_name):
-        refs = get_table_refs(cfg, db_prefix)
+        refs = get_table_refs(cfg, db_prefix, "ES")
         assert refs[key] == f"{db_prefix}.`{expected_table_name}`"
 
     def test_all_qualified_refs_use_backticks(self, cfg, db_prefix):
-        refs = get_table_refs(cfg, db_prefix)
+        refs = get_table_refs(cfg, db_prefix, "ES")
         qualified_keys = (
             "raw_table",
             "harm_table",
@@ -107,26 +107,23 @@ class TestGetTableRefs:
             assert refs[k].count("`") == 6  # cat, schema, table — 6 backticks
 
     def test_works_with_different_db_prefix(self, cfg):
-        refs = get_table_refs(cfg, "`other`.`other_schema`")
-        assert refs["raw_table"] == "`other`.`other_schema`.`demo_raw_table`"
+        refs = get_table_refs(cfg, "`other`.`other_schema`", "ES")
+        assert refs["raw_table"] == "`other`.`other_schema`.`bronze_property_monthly_es`"
 
     def test_missing_source_context_key_raises(self, db_prefix):
         with pytest.raises(KeyError):
-            get_table_refs({}, db_prefix)
+            get_table_refs({}, db_prefix, "ES")
 
     def test_missing_target_model_key_raises(self, db_prefix):
-        bad = {"source_context": {"source_system": "S", "source_table": "t"}}
+        bad = {"sources": {}, "target_model": {"table_name": "tgt"}}
         with pytest.raises(KeyError):
-            get_table_refs(bad, db_prefix)
+            get_table_refs(bad, db_prefix, "ES")
 
     def test_special_chars_in_table_names_pass_through(self, db_prefix):
         cfg = {
-            "source_context": {
-                "source_system": "X",
-                "source_table": "table with spaces",
-            },
+            "sources": {"ES": {"source_system": "X", "source_table": "table with spaces"}},
             "target_model": {"table_name": "tgt"},
         }
-        refs = get_table_refs(cfg, db_prefix)
+        refs = get_table_refs(cfg, db_prefix, "ES")
         # Backticks already wrap names, so spaces are valid
         assert refs["raw_table"] == "`my_cat`.`my_schema`.`table with spaces`"

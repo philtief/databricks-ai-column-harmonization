@@ -8,25 +8,24 @@
 #   databricks bundle deploy && databricks bundle run Column_Mapping_To_Global_Model
 # ==========================================================================
 
-# --- Source context (fed to the LLM when proposing column mappings) --------
-source_context:
-  # Short label shown in logs and prompts
-  domain: "<your domain, e.g. Germany motor insurance quarterly reporting>"
-
-  # Identifier stored in control tables to distinguish this source
-  source_system: "<your source system, e.g. DE_MOTOR_RAW>"
-
-  # Raw table name — must already exist in your <catalog>.<schema>
-  source_table: "<your raw table name, e.g. motor_insurance_quarterly_raw>"
-
-  # Description passed to the LLM. Be specific: the more context, the better
-  # the mapping quality. Mention source language, business domain, and any
-  # naming conventions.
-  description: >
-    <Describe your source data. Mention source language, business domain, and
-    any naming conventions. Example: Quarterly reporting data from Germany
-    motor insurance. Source columns are in German. Target model uses English
-    names.>
+# --- Source contexts (fed to the LLM when proposing column mappings) -------
+# Use uppercase country keys. Every source needs its own raw table and a
+# specific, source-language-aware description.
+sources:
+  ES:
+    domain: "<country-specific domain, e.g. Spain property insurance monthly reporting>"
+    source_system: "<uppercase source-system identifier, e.g. ES_PROPERTY_RAW>"
+    source_table: "<bronze table name for this country>"
+    description: >
+      <Describe the country source. Mention source language, business domain,
+      column semantics, and traps such as gross versus net amounts.>
+  IT:
+    domain: "<country-specific domain, e.g. Italy property insurance monthly reporting>"
+    source_system: "<uppercase source-system identifier, e.g. IT_PROPERTY_RAW>"
+    source_table: "<bronze table name for this country>"
+    description: >
+      <Describe the country source. Mention source language, business domain,
+      column semantics, and traps such as reported versus paid claims.>
 
 
 # --- Target data model (the "ground truth" the LLM maps into) -------------
@@ -34,7 +33,7 @@ source_context:
 # The 'description' field is especially important: it helps the LLM
 # distinguish between similarly named columns. Write it for an LLM reader.
 target_model:
-  table_name: "<your harmonized table name, e.g. motor_insurance_quarterly>"
+  table_name: "<your harmonized table name, e.g. harmonized_property_monthly>"
 
   columns:
     # Each column needs: name, type, description.

@@ -1,0 +1,29 @@
+{
+  "source_system": "IT_PROPERTY_RAW",
+  "mappings": {
+    "id_riga": "record_id",
+    "anno_riferimento": "reporting_year",
+    "mese_riferimento": "reporting_month",
+    "codice_polizza": "policy_number",
+    "tipo_rischio": "risk_type",
+    "regione": "region",
+    "canale_distributivo": "distribution_channel",
+    "premi_netti": "net_written_premium_eur",
+    "premi_lordi_contabilizzati": "gross_written_premium_eur",
+    "num_polizze_nuove": "new_policies_count",
+    "num_polizze_rinnovate": "renewed_policies_count",
+    "num_polizze_cancellate": "cancelled_policies_count",
+    "sinistri_denunciati": "claims_reported_count",
+    "sinistri_pagati": "claims_paid_count",
+    "costo_sinistri_lordo": "gross_claims_incurred_eur",
+    "riserva_sinistri": "claims_reserve_eur",
+    "spese_gestione": "management_expenses_eur",
+    "provvigioni": "commissions_eur",
+    "rapporto_sinistri_premi": "loss_ratio",
+    "segmento_cliente": "customer_segment",
+    "zona_rischio": "risk_zone",
+    "copertura_principale": "primary_coverage",
+    "valuta": "currency",
+    "codice_agenzia_interno": null
+  }
+}

@@ -1,0 +1,17 @@
+# Lakeflow Spark Declarative Pipeline: country CSV drops in the landing volume -> bronze streaming tables.
+resources:
+  pipelines:
+    ingest_country_feeds:
+      name: halvard_ingest_country_feeds
+      serverless: true
+      catalog: ${var.catalog_name}
+      schema: ${var.schema_name}
+      channel: CURRENT
+      configuration:
+        countries: ES,IT
+        catalog: ${var.catalog_name}
+        schema: ${var.schema_name}
+        src_path: ${workspace.file_path}/src
+      libraries:
+        - file:
+            path: ../pipelines/ingest_country_feeds.py

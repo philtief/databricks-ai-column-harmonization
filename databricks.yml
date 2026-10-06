@@ -1,134 +1,32 @@
 bundle:
-  name: column-mapping-to-global-model
+  name: halvard-column-harmonization
 
-workspace:
-  # Set this to the Databricks CLI profile that authenticates to your workspace.
-  # Or remove this block entirely and rely on DATABRICKS_HOST / DATABRICKS_TOKEN env vars.
-  # profile: your-profile-name
+include:
+  - resources/*.yml
+
+variables:
+  catalog_name:
+    description: Unity Catalog catalog for all tables (must exist).
+    default: agent_marketplace_catalog
+  schema_name:
+    description: Schema for landing volume, bronze, control and harmonized tables.
+    default: halvard_harmonization
+  warehouse_id:
+    description: Serverless SQL warehouse used by the app and Genie.
+    default: 41754a8563a43a49
+  ai_endpoint:
+    description: Foundation model endpoint for ai_query mapping proposals.
+    default: databricks-claude-sonnet-5
+  lakebase_project:
+    description: Lakebase Autoscaling project that holds the review workflow state.
+    default: halvard-harmonization
+  privileged_principals:
+    description: Comma-separated users/SPs that see every country through the row filter.
+    default: ""
 
 targets:
   dev:
     default: true
-    # Optionally override root_path per target:
-    # workspace:
-    #   root_path: /Workspace/Users/<your-user>/databricks-column-harmonization
-
-resources:
-  apps:
-    column_mapping_review_app:
-      name: column-mapping-review-app
-      description: "Databricks App for reviewing AI-proposed column mappings before publishing harmonized output"
-      source_code_path: ./apps/column_mapping_review_app
-      resources:
-        - name: harmonization-workflow
-          job:
-            id: ${resources.jobs.Column_Mapping_To_Global_Model.id}
-            permission: CAN_MANAGE_RUN
-
-  jobs:
-    Column_Mapping_To_Global_Model:
-      name: Column_Mapping_To_Global_Model
-      max_concurrent_runs: 1
-
-      tags:
-        project: column-harmonization
-        pattern: column-mapping-with-app-review
-
-      parameters:
-        - name: catalog_name
-          default: your_catalog
-        - name: schema_name
-          default: harmonizing_agent
-        - name: source_country
-          default: "Spain"
-        - name: ai_endpoint
-          default: databricks-gpt-5-2
-        - name: mapping_version
-          default: v1
-
-      # Task keys → notebook mapping:
-      #   bootstrap_catalog (00), generate_demo_data (01, demo only),
-      #   create_global_model_and_control_tables (02), inventory_source_columns (03),
-      #   ai_propose_column_mappings (04), prepare_app_review_views (05),
-      #   column_mapping_review_gate (06), build_column_mapping_dictionary (07),
-      #   apply_approved_column_mappings (08), optional_value_mapping (09),
-      #   validate_and_monitor (10)
-      tasks:
-        # -- Task 00: Bootstrap catalog and schema
-        - task_key: bootstrap_catalog
-          notebook_task:
-            notebook_path: ./notebooks/00_bootstrap_catalog.py
-
-        # -- DEMO ONLY: Remove this task when using your own data source.
-        # -- If removed, update inventory_source_columns to depend only on
-        # -- create_global_model_and_control_tables.
-        - task_key: generate_demo_data
-          depends_on:
-            - task_key: bootstrap_catalog
-          notebook_task:
-            notebook_path: ./examples/spain_demo/01_generate_spain_raw_data.py
-
-        # -- Task 3: Create all tables, views, prepopulate global target columns
-        - task_key: create_global_model_and_control_tables
-          depends_on:
-            - task_key: bootstrap_catalog
-          notebook_task:
-            notebook_path: ./notebooks/02_create_global_model_and_control_tables.py
-
-        # -- Task 4: Inventory source columns with sample values
-        - task_key: inventory_source_columns
-          depends_on:
-            - task_key: generate_demo_data  # Remove this line when using your own data
-            - task_key: create_global_model_and_control_tables
-          notebook_task:
-            notebook_path: ./notebooks/03_inventory_source_columns.py
-
-        # -- Task 5: AI propose column mappings (vectorized ai_query call)
-        - task_key: ai_propose_column_mappings
-          depends_on:
-            - task_key: inventory_source_columns
-          notebook_task:
-            notebook_path: ./notebooks/04_ai_propose_column_mappings.py
-
-        # -- Task 6: Prepare app review views -- surfaces proposals for the App.
-        #            After this task, business users review in the Databricks App.
-        - task_key: prepare_app_review_views
-          depends_on:
-            - task_key: ai_propose_column_mappings
-          notebook_task:
-            notebook_path: ./notebooks/05_prepare_app_review_views.py
-
-        # -- Task 7: Review gate -- BLOCKS if mandatory columns are PENDING
-        - task_key: column_mapping_review_gate
-          depends_on:
-            - task_key: prepare_app_review_views
-          notebook_task:
-            notebook_path: ./notebooks/06_column_mapping_review_gate.py
-
-        # -- Task 8: Promote approved candidates to dictionary
-        - task_key: build_column_mapping_dictionary
-          depends_on:
-            - task_key: column_mapping_review_gate
-          notebook_task:
-            notebook_path: ./notebooks/07_build_column_mapping_dictionary.py
-
-        # -- Task 9: Apply dictionary to raw table -> write harmonized output
-        - task_key: apply_approved_column_mappings
-          depends_on:
-            - task_key: build_column_mapping_dictionary
-          notebook_task:
-            notebook_path: ./notebooks/08_apply_approved_column_mappings.py
-
-        # -- Task 10: Optional value translation (skipped if dict is empty)
-        - task_key: optional_value_mapping
-          depends_on:
-            - task_key: apply_approved_column_mappings
-          notebook_task:
-            notebook_path: ./notebooks/09_optional_value_mapping.py
-
-        # -- Task 11: Data quality checks and monitoring summary
-        - task_key: validate_and_monitor
-          depends_on:
-            - task_key: optional_value_mapping
-          notebook_task:
-            notebook_path: ./notebooks/10_validate_and_monitor.py
+    workspace:
+      profile: pt
+      root_path: /Workspace/Users/${workspace.current_user.userName}/halvard-column-harmonization

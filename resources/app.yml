@@ -1,0 +1,21 @@
+# Review app. The Genie space resource is attached after the space exists (scripts/finalize_app.sh).
+resources:
+  apps:
+    review_app:
+      name: halvard-harmonization-review
+      description: "Halvard Group: review AI column mappings per country, publish, and ask the group data"
+      source_code_path: ../apps/column_mapping_review_app
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: publish-job
+          job:
+            id: ${resources.jobs.halvard_publish_harmonized.id}
+            permission: CAN_MANAGE_RUN
+        - name: postgres
+          postgres:
+            branch: projects/${var.lakebase_project}/branches/production
+            database: projects/${var.lakebase_project}/branches/production/databases/databricks-postgres
+            permission: CAN_CONNECT_AND_CREATE

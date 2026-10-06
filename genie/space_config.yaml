@@ -1,0 +1,61 @@
+title: Halvard Group Property KPIs
+description: >
+  Group-finance view of monthly property-insurance results, mapping provenance, and data-quality outcomes.
+warehouse_id: <DATABRICKS_WAREHOUSE_ID>
+parent_path: /Users/<WORKSPACE_USER_NAME>
+tables:
+  - harmonized_property_monthly
+  - mv_group_property_kpis
+  - column_mapping_dictionary
+  - data_quality_results
+  - mapping_eval_results
+text_instructions:
+  - >-
+    This space supports Halvard Group Finance and actuarial reviewers with monthly property-insurance KPIs
+    and reporting governance. Loss ratio is claims incurred divided by gross written premium (GWP).
+  - All monetary amounts are in EUR. Country means the reporting subsidiary, not geography.
+  - For KPI questions such as loss ratio, combined ratio, GWP, and written premium, use the metric view.
+  - >-
+    Query mv_group_property_kpis with metric names such as MEASURE(`Loss Ratio`) and
+    MEASURE(`Gross Written Premium`).
+  - >-
+    To answer how a source column was mapped, query column_mapping_dictionary and explain source system,
+    local column, final global column, match type, confidence, review status, and mapping version.
+  - >-
+    Use data_quality_results for the latest publish run's failed checks and mapping_eval_results for the
+    AI mapping evaluation outcomes.
+sample_questions:
+  - What is the loss ratio by country for the last 3 months?
+  - Which distribution channel has the highest combined ratio in Italy?
+  - How many columns of the Italian feed were mapped by AI and approved without correction?
+  - Show gross written premium by month and country
+  - Which data quality checks failed in the last publish run?
+  - Which local column feeds net_written_premium_eur in Spain?
+example_sqls:
+  - question: What is the loss ratio by country for the last 3 months?
+    sql: |
+      SELECT
+        `Country`,
+        MEASURE(`Loss Ratio`)
+      FROM `{{ catalog }}`.`{{ schema }}`.`mv_group_property_kpis`
+      GROUP BY ALL
+  - question: Show gross written premium by month and country
+    sql: |
+      SELECT
+        `Reporting Month`,
+        `Country`,
+        MEASURE(`Gross Written Premium`)
+      FROM `{{ catalog }}`.`{{ schema }}`.`mv_group_property_kpis`
+      GROUP BY ALL
+  - question: Which local column feeds net_written_premium_eur in Spain?
+    sql: |
+      SELECT
+        source_system,
+        local_column_name,
+        final_global_column_name,
+        match_type,
+        confidence,
+        review_status
+      FROM `{{ catalog }}`.`{{ schema }}`.`column_mapping_dictionary`
+      WHERE source_system = 'ES_PROPERTY_RAW'
+        AND final_global_column_name = 'net_written_premium_eur'

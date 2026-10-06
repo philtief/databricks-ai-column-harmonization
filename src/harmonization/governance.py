@@ -133,7 +133,8 @@ def governance_plan(
         "layer": "gold",
         "domain": "finance",  # governed tag policy in the workspace: finance | sales | supply_chain | ...
         "line_of_business": "property",
-        "data_owner": "group_actuarial",
+        "business_owner": "finance",  # governed tag policy; Group Finance owns the close
+        "steward": "group_actuarial",
         "classification": "confidential",
     }
     plan.append(

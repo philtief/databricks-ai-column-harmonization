@@ -15,8 +15,8 @@ x-params: &params
     default: v1
   - name: lakebase_endpoint
     default: projects/${var.lakebase_project}/branches/production/endpoints/primary
-  - name: app_service_principal
-    default: ${resources.apps.review_app.service_principal_client_id}
+  - name: app_name
+    default: halvard-harmonization-review
 
 resources:
   jobs:
@@ -81,8 +81,8 @@ resources:
           default: projects/${var.lakebase_project}/branches/production/endpoints/primary
         - name: privileged_principals
           default: ${var.privileged_principals}
-        - name: app_service_principal
-          default: ${resources.apps.review_app.service_principal_client_id}
+        - name: app_name
+          default: halvard-harmonization-review
       tasks:
         - task_key: column_mapping_review_gate
           notebook_task:

@@ -32,6 +32,7 @@ dbutils.widgets.text("source_country", "ES", "Source Country")
 dbutils.widgets.text("mapping_version", "v1", "Mapping Version")
 dbutils.widgets.text("lakebase_endpoint", "", "Lakebase Endpoint")
 dbutils.widgets.text("app_service_principal", "", "App service principal (Lakebase grant)")
+dbutils.widgets.text("app_name", "", "App name (resolves the app service principal)")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
@@ -39,6 +40,12 @@ source_country = dbutils.widgets.get("source_country").strip()
 mapping_version = dbutils.widgets.get("mapping_version").strip()
 lakebase_endpoint = dbutils.widgets.get("lakebase_endpoint").strip()
 app_service_principal = dbutils.widgets.get("app_service_principal").strip()
+app_name = dbutils.widgets.get("app_name").strip()
+if not app_service_principal and app_name:
+    # The jobs get the app name, not its SP id: the app references the publish job, so a direct reference is a cycle.
+    from databricks.sdk import WorkspaceClient
+
+    app_service_principal = WorkspaceClient().apps.get(app_name).service_principal_client_id
 
 if not lakebase_endpoint:
     raise ValueError("lakebase_endpoint must not be empty")

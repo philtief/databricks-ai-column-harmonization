@@ -21,6 +21,7 @@ dbutils.widgets.text("catalog_name", "agent_marketplace_catalog", "Catalog Name"
 dbutils.widgets.text("schema_name", "halvard_harmonization", "Schema Name")
 dbutils.widgets.text("privileged_principals", "", "Privileged Principals")
 dbutils.widgets.text("app_service_principal", "", "App Service Principal")
+dbutils.widgets.text("app_name", "", "App name (resolves the app service principal)")
 
 catalog_name = dbutils.widgets.get("catalog_name").strip()
 schema_name = dbutils.widgets.get("schema_name").strip()
@@ -28,6 +29,12 @@ privileged_principals = [
     principal.strip() for principal in dbutils.widgets.get("privileged_principals").split(",") if principal.strip()
 ]
 app_service_principal = dbutils.widgets.get("app_service_principal").strip()
+app_name = dbutils.widgets.get("app_name").strip()
+if not app_service_principal and app_name:
+    # The jobs get the app name, not its SP id: the app references the publish job, so a direct reference is a cycle.
+    from databricks.sdk import WorkspaceClient
+
+    app_service_principal = WorkspaceClient().apps.get(app_name).service_principal_client_id
 config = load_harmonization_config()
 
 from harmonization.governance import governance_plan, sql_str

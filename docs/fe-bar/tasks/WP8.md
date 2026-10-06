@@ -54,3 +54,11 @@ Mock-based like the existing `tests/test_app.py`: the country mapping; the publi
 `extract_genie_answer` with text-only, SQL and empty messages; decision helpers calling `record_decision` with the
 right arguments (mock the store); the connect retry logic (mock OperationalError twice then success); and the module-sync test.
 Lint + tests green, coverage ≥ 80% (the app is outside `src/`, so coverage only counts src; still test the app helpers).
+
+## Updates after Stage A review (binding)
+- `review_store.connect` returns a connection with `dict_row`; rows are dicts. Read `src/harmonization/review_store.py`
+  for the exact signatures before using it.
+- The Genie API lives at `WorkspaceClient().genie` (`databricks.sdk.service.dashboards.GenieAPI`): `start_conversation_and_wait`,
+  `create_message_and_wait`, `get_message_attachment_query_result`.
+- Metric view dimensions: `Country`, `Reporting Period`, `Distribution Channel`, `Customer Segment`, `Risk Zone`, `Region`
+  (see `sql/mv_group_property_kpis.yaml`).

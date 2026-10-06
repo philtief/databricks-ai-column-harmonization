@@ -65,3 +65,12 @@ Stage A is merged: `get_source_context` (config.py), `review_store.py`, `ingest.
 Lint + tests green, coverage ≥ 80%. Add/adjust unit tests for `tables.py`, `llm.py`, `value_mapping.py`.
 Notebooks cannot run locally; check them by reading. In `WP_NOTES.md`, list for every notebook the widget
 names it reads (the integrator wires job parameters from that list).
+
+## Updates after Stage A review (binding)
+- Mandatory columns are per country now: `get_mandatory_columns(cfg, source_country)` (notebooks 04, 06, 10 read
+  `_cfg["mandatory_source_columns"]` today; that key no longer exists).
+- `get_ai_context`, `get_source_system`, `get_source_table` take `(config, country)`.
+- Period columns are year + month (`anio`/`mes`, `anno_riferimento`/`mese_riferimento`), mapped to
+  `reporting_year` / `reporting_month`.
+- Generated file layout and table names: see `src/harmonization/ingest.py` and `examples/generate_country_files.py`.
+- `review_store.connect` returns a connection with `dict_row`; rows are dicts.

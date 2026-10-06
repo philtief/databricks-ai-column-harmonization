@@ -4,9 +4,9 @@ dimensions:
   - name: Country
     expr: source_country
     comment: Country that submitted the insurance reporting data.
-  - name: Reporting Month
-    expr: reporting_month
-    comment: Month number used for the monthly reporting period.
+  - name: Reporting Period
+    expr: make_date(reporting_year, reporting_month, 1)
+    comment: First day of the monthly reporting period.
   - name: Distribution Channel
     expr: distribution_channel
     comment: Route through which insurance policies were sold.

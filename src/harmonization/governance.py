@@ -99,7 +99,7 @@ def _financial_columns(config: dict[str, Any]) -> list[str]:
     return [
         column["name"]
         for column in config["target_model"]["columns"]
-        if column.get("semantic_group") in {"premium", "claims", "expenses"}
+        if column.get("semantic_group") in {"premium", "claims", "expenses"} and column.get("type") == "DOUBLE"
     ]
 
 

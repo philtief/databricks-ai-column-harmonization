@@ -16,6 +16,8 @@ sources:
     domain: "<country-specific domain, e.g. Spain property insurance monthly reporting>"
     source_system: "<uppercase source-system identifier, e.g. ES_PROPERTY_RAW>"
     source_table: "<bronze table name for this country>"
+    # Local columns that must be reviewed before the review gate (notebook 06) passes.
+    mandatory_columns: ["<local_column_name_1>", "<local_column_name_2>"]
     description: >
       <Describe the country source. Mention source language, business domain,
       column semantics, and traps such as gross versus net amounts.>
@@ -23,6 +25,8 @@ sources:
     domain: "<country-specific domain, e.g. Italy property insurance monthly reporting>"
     source_system: "<uppercase source-system identifier, e.g. IT_PROPERTY_RAW>"
     source_table: "<bronze table name for this country>"
+    # Local columns that must be reviewed before the review gate (notebook 06) passes.
+    mandatory_columns: ["<local_column_name_1>", "<local_column_name_2>"]
     description: >
       <Describe the country source. Mention source language, business domain,
       column semantics, and traps such as reported versus paid claims.>
@@ -57,15 +61,6 @@ target_model:
 
     # Add as many columns as your target model needs. The more precise the
     # description, the better the AI mapping quality.
-
-
-# --- Mandatory source columns ----------------------------------------------
-# Source columns that MUST be reviewed (approved or corrected) before the
-# workflow proceeds past the review gate (notebook 06). List the local
-# column names from your raw table.
-mandatory_source_columns:
-  - "<local_column_name_1>"
-  - "<local_column_name_2>"
 
 
 # --- Semantic fields (optional value translation) --------------------------

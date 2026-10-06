@@ -14,6 +14,8 @@ sources:
     domain: "Spain property insurance monthly reporting"
     source_system: "ES_PROPERTY_RAW"
     source_table: "bronze_property_monthly_es"
+    # Must be reviewed in the app before the publish job passes the review gate (notebook 06).
+    mandatory_columns: [id_registro, anio, mes, codigo_poliza, tipo_riesgo, provincia, canal_distribucion, prima_neta, prima_bruta, num_siniestros_declarados, num_siniestros_pagados, segmento_cliente, cobertura_principal, moneda]
     description: >
       Monthly reporting data from Spain property insurance operations.
       Source columns are in Spanish (e.g. prima_bruta = gross written premium,
@@ -26,6 +28,8 @@ sources:
     domain: "Italy property insurance monthly reporting"
     source_system: "IT_PROPERTY_RAW"
     source_table: "bronze_property_monthly_it"
+    # Must be reviewed in the app before the publish job passes the review gate (notebook 06).
+    mandatory_columns: [id_riga, anno_riferimento, mese_riferimento, codice_polizza, tipo_rischio, regione, canale_distributivo, premi_netti, premi_lordi_contabilizzati, sinistri_denunciati, sinistri_pagati, segmento_cliente, copertura_principale, valuta]
     description: >
       Monthly reporting data from Italy property insurance operations.
       Source columns are in Italian (e.g. premi_lordi_contabilizzati = gross
@@ -221,26 +225,6 @@ target_model:
       examples: ["EUR"]
       required: true
       semantic_group: monetary
-
-
-# --- Mandatory source columns -----------------------------------------------
-# These source columns must be reviewed and approved in the Databricks App
-# before the workflow can proceed past the review gate (notebook 06).
-mandatory_source_columns:
-  - id_registro
-  - anio
-  - mes
-  - codigo_poliza
-  - tipo_riesgo
-  - provincia
-  - canal_distribucion
-  - prima_neta
-  - prima_bruta
-  - num_siniestros_declarados
-  - num_siniestros_pagados
-  - segmento_cliente
-  - cobertura_principal
-  - moneda
 
 
 # --- Semantic fields (eligible for optional value mapping) -----------------

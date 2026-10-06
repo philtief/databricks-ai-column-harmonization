@@ -9,6 +9,9 @@ example among many — the loader should work for any well-formed YAML.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 import yaml
 
@@ -34,6 +37,7 @@ VALID_CONFIG: dict = {
             "source_system": "DEMO_RAW",
             "source_table": "demo_raw",
             "description": "Demo customer contact records for testing.",
+            "mandatory_columns": ["id", "email"],
         },
     },
     "target_model": {
@@ -65,7 +69,6 @@ VALID_CONFIG: dict = {
             },
         ],
     },
-    "mandatory_source_columns": ["id", "email"],
     "semantic_fields": ["country"],
     "ai": {"endpoint": "test-endpoint"},
 }
@@ -90,7 +93,6 @@ class TestLoadConfig:
     def test_loads_minimal_valid_config(self, config):
         assert "sources" in config
         assert "target_model" in config
-        assert "mandatory_source_columns" in config
         assert "semantic_fields" in config
         assert "ai" in config
 
@@ -139,7 +141,6 @@ class TestLoadConfig:
         data = {
             "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {"columns": []},
-            "mandatory_source_columns": [],
             "semantic_fields": [],
             "ai": {},
         }
@@ -152,7 +153,6 @@ class TestLoadConfig:
         data = {
             "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {"columns": [{"name": "x"}]},
-            "mandatory_source_columns": [],
             "semantic_fields": [],
             "ai": {},
         }
@@ -165,7 +165,6 @@ class TestLoadConfig:
         data = {
             "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {"columns": [{"name": "bad-name", "type": "STRING", "description": "test"}]},
-            "mandatory_source_columns": [],
             "semantic_fields": [],
             "ai": {},
         }
@@ -178,7 +177,6 @@ class TestLoadConfig:
         data = {
             "sources": dict(VALID_CONFIG["sources"]),
             "target_model": {"columns": [{"name": "1col", "type": "STRING", "description": "x"}]},
-            "mandatory_source_columns": [],
             "semantic_fields": [],
             "ai": {},
         }
@@ -208,7 +206,6 @@ class TestGetTargetColumns:
             "target_model": {
                 "columns": [{"name": "x", "type": "STRING", "description": "y"}],
             },
-            "mandatory_source_columns": [],
             "semantic_fields": [],
             "ai": {},
         }
@@ -235,15 +232,30 @@ class TestGetTargetColumns:
 
 class TestGetMandatoryColumns:
     def test_returns_configured_mandatory_columns(self, config):
-        assert get_mandatory_columns(config) == ["id", "email"]
+        assert get_mandatory_columns(config, "DE") == ["id", "email"]
 
-    def test_all_non_empty_strings(self, config):
-        for col in get_mandatory_columns(config):
-            assert isinstance(col, str) and len(col) > 0
+    def test_unknown_country_raises(self, config):
+        with pytest.raises(KeyError, match="Valid countries"):
+            get_mandatory_columns(config, "FR")
 
-    def test_shipped_config_mandatory_columns_are_strings(self, shipped_config):
-        for col in get_mandatory_columns(shipped_config):
-            assert isinstance(col, str) and len(col) > 0
+    def test_shipped_mandatory_columns_exist_in_answer_keys(self, shipped_config):
+        # Every mandatory column must be a real generated column (answer keys list all of them).
+        root = Path(__file__).resolve().parents[1]
+        for country in ("ES", "IT"):
+            key = json.loads((root / "examples" / "answer_keys" / f"{country.lower()}.json").read_text())
+            cols = get_mandatory_columns(shipped_config, country)
+            assert cols, country
+            assert set(cols) <= set(key["mappings"]), country
+
+    def test_source_without_mandatory_columns_raises(self, tmp_path):
+        data = {
+            **VALID_CONFIG,
+            "sources": {"DE": {k: v for k, v in VALID_CONFIG["sources"]["DE"].items() if k != "mandatory_columns"}},
+        }
+        bad = tmp_path / "bad.yaml"
+        bad.write_text(yaml.dump(data))
+        with pytest.raises(ValueError, match="mandatory_columns"):
+            load_config(str(bad))
 
 
 class TestGetSemanticFields:
@@ -278,12 +290,25 @@ class TestGetSourceContext:
             "source_system": "DEMO_RAW",
             "source_table": "demo_raw",
             "description": "Demo customer contact records for testing.",
+            "mandatory_columns": ["id", "email"],
         }
 
     def test_returns_non_empty_context_for_each_country(self, tmp_path):
         sources = {
-            "DE": {"domain": "D", "source_system": "DE_RAW", "source_table": "de_raw", "description": "German"},
-            "IT": {"domain": "D", "source_system": "IT_RAW", "source_table": "it_raw", "description": "Italian"},
+            "DE": {
+                "domain": "D",
+                "source_system": "DE_RAW",
+                "source_table": "de_raw",
+                "description": "German",
+                "mandatory_columns": ["id"],
+            },
+            "IT": {
+                "domain": "D",
+                "source_system": "IT_RAW",
+                "source_table": "it_raw",
+                "description": "Italian",
+                "mandatory_columns": ["id"],
+            },
         }
         cfg = dict(VALID_CONFIG)
         cfg["sources"] = sources
@@ -300,18 +325,9 @@ class TestGetSourceContext:
             get_source_context(config, "ES")
 
     def test_shipped_context_has_both_countries(self, shipped_config):
-        assert set(get_source_context(shipped_config, "ES")) == {
-            "domain",
-            "source_system",
-            "source_table",
-            "description",
-        }
-        assert set(get_source_context(shipped_config, "IT")) == {
-            "domain",
-            "source_system",
-            "source_table",
-            "description",
-        }
+        expected = {"domain", "source_system", "source_table", "description", "mandatory_columns"}
+        assert set(get_source_context(shipped_config, "ES")) == expected
+        assert set(get_source_context(shipped_config, "IT")) == expected
 
 
 class TestGetTargetTable:

@@ -33,11 +33,11 @@ def config() -> dict:
         "target_model": {
             "table_name": "harmonized_property_monthly",
             "columns": [
-                {"name": "reporting_month", "semantic_group": "time"},
-                {"name": "gross_written_premium_eur", "semantic_group": "premium"},
-                {"name": "claims_reported_count", "semantic_group": "claims"},
-                {"name": "commissions_eur", "semantic_group": "expenses"},
-                {"name": "customer_segment", "semantic_group": "customer"},
+                {"name": "reporting_month", "type": "INT", "semantic_group": "time"},
+                {"name": "gross_written_premium_eur", "type": "DOUBLE", "semantic_group": "premium"},
+                {"name": "claims_reported_count", "type": "INT", "semantic_group": "claims"},
+                {"name": "commissions_eur", "type": "DOUBLE", "semantic_group": "expenses"},
+                {"name": "customer_segment", "type": "STRING", "semantic_group": "customer"},
             ],
         },
     }
@@ -142,10 +142,6 @@ class TestGovernancePlan:
             "SET TAGS ('kpi_type' = 'financial')" in joined_sqls
         )
         assert (
-            "ALTER TABLE `cat`.`schema`.`harmonized_property_monthly` ALTER COLUMN `claims_reported_count` "
-            "SET TAGS ('kpi_type' = 'financial')" in joined_sqls
-        )
-        assert (
             "ALTER TABLE `cat`.`schema`.`harmonized_property_monthly` ALTER COLUMN `commissions_eur` "
             "SET TAGS ('kpi_type' = 'financial')" in joined_sqls
         )
@@ -157,9 +153,11 @@ class TestGovernancePlan:
     def test_financial_tags_cover_config_groups(self, config):
         plan = governance_plan("cat", "schema", config, [], "")
         joined = "\n".join(sql for _, sql in plan)
-        for column in ("gross_written_premium_eur", "claims_reported_count", "commissions_eur"):
+        for column in ("gross_written_premium_eur", "commissions_eur"):
             assert f"ALTER COLUMN `{column}`" in joined
-        assert "ALTER COLUMN `customer_segment`" not in joined
+        # Counts are not monetary amounts, so they are not tagged financial.
+        for column in ("claims_reported_count", "customer_segment"):
+            assert f"ALTER COLUMN `{column}`" not in joined
 
     def test_no_app_grants_when_app_sp_is_empty(self, config):
         plan = governance_plan("cat", "schema", config, [], "")
@@ -180,7 +178,7 @@ class TestMetricViewYaml:
         measure_names = [measure["name"] for measure in payload["measures"]]
         expected_dimensions = [
             "Country",
-            "Reporting Month",
+            "Reporting Period",
             "Distribution Channel",
             "Customer Segment",
             "Risk Zone",
@@ -202,11 +200,18 @@ class TestMetricViewYaml:
         assert dimension_names == expected_dimensions
         assert measure_names == expected_measures
         assert dimension_exprs[0] == "source_country"
-        assert dimension_exprs[1] == "reporting_month"
+        assert dimension_exprs[1] == "make_date(reporting_year, reporting_month, 1)"
         assert all(dimension.get("comment") for dimension in payload["dimensions"])
         assert all(measure.get("comment") for measure in payload["measures"])
         config_columns = {item["name"] for item in load_config()["target_model"]["columns"]}
-        assert {"reporting_month", "distribution_channel", "customer_segment", "risk_zone", "region"} <= config_columns
+        assert {
+            "reporting_year",
+            "reporting_month",
+            "distribution_channel",
+            "customer_segment",
+            "risk_zone",
+            "region",
+        } <= config_columns
         assert measure_exprs[-1] == ("SUM(new_policies_count + renewed_policies_count - cancelled_policies_count)")
         assert "NULLIF(SUM(gross_written_premium_eur), 0)" in measure_exprs[7]
 

@@ -7,8 +7,8 @@ from typing import Any
 
 import yaml
 
-_REQUIRED_KEYS = {"sources", "target_model", "mandatory_source_columns", "semantic_fields", "ai"}
-_REQUIRED_SOURCE_KEYS = {"domain", "source_system", "source_table", "description"}
+_REQUIRED_KEYS = {"sources", "target_model", "semantic_fields", "ai"}
+_REQUIRED_SOURCE_KEYS = {"domain", "source_system", "source_table", "description", "mandatory_columns"}
 _REQUIRED_COLUMN_KEYS = {"name", "type", "description"}
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -88,9 +88,9 @@ def get_target_column_names(config: dict) -> list[str]:
     return [col["name"] for col in config["target_model"]["columns"]]
 
 
-def get_mandatory_columns(config: dict) -> list[str]:
-    """Return the mandatory source columns list from config."""
-    return list(config["mandatory_source_columns"])
+def get_mandatory_columns(config: dict, country: str) -> list[str]:
+    """Return the local columns of one country that must be reviewed before the gate passes."""
+    return list(get_source_context(config, country)["mandatory_columns"])
 
 
 def get_semantic_fields(config: dict) -> list[str]:

@@ -42,7 +42,7 @@ example_sqls:
   - question: Show gross written premium by month and country
     sql: |
       SELECT
-        `Reporting Month`,
+        `Reporting Period`,
         `Country`,
         MEASURE(`Gross Written Premium`)
       FROM `{{ catalog }}`.`{{ schema }}`.`mv_group_property_kpis`

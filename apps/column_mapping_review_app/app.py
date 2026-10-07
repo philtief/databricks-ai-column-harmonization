@@ -215,6 +215,18 @@ def inject_custom_css():
             padding: 8px;
         }}
         .stRadio > div {{ gap: 0.25rem; }}
+        /* Heading rhythm: more space above a heading than below it. */
+        h2 {{ margin-top: 2rem !important; margin-bottom: 0.75rem !important; }}
+        h3 {{ margin-top: 1.5rem !important; margin-bottom: 0.5rem !important; }}
+        /* Align digits in KPI tiles and data tables. */
+        div[data-testid="stMetric"] [data-testid="stMetricValue"],
+        .stDataFrame {{ font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }}
+        /* Browser surfaces carry the palette too. */
+        ::selection {{ background: {SECONDARY_BLUE}; color: #FFFFFF; }}
+        .stApp ::-webkit-scrollbar {{ width: 11px; height: 11px; }}
+        .stApp ::-webkit-scrollbar-thumb {{ background: #C3C9D4; border-radius: 6px; border: 2px solid {BG_LIGHT}; }}
+        .stApp ::-webkit-scrollbar-thumb:hover {{ background: {SECONDARY_BLUE}; }}
+        :focus-visible {{ outline: 2px solid {SECONDARY_BLUE}; outline-offset: 2px; }}
         #MainMenu {{ visibility: hidden; }}
         footer {{ visibility: hidden; }}
         header {{ visibility: hidden; }}
@@ -539,13 +551,8 @@ def page_group_overview(country: str):
         matches = harmonized[harmonized["source_country"] == country]
         harmonized_row_count = int(matches["row_count"].sum()) if not matches.empty else 0
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Harmonized Rows", harmonized_row_count)
-    col2.metric("Approved / Corrected", counts["APPROVED"] + counts["CORRECTED"])
-    col3.metric("Rejected", counts["REJECTED"])
-    col4.metric("Pending", counts["PENDING"])
-    st.metric("Mandatory Pending", mandatory_pending)
-
+    # Lead with the group KPIs: the CFO and actuarial headline for this subsidiary.
+    st.subheader(f"Group KPIs — {country} (EUR)")
     if kpis.empty:
         st.info("Group KPIs are not available yet. Publish harmonized data to create the metric view input.")
     else:
@@ -556,6 +563,15 @@ def page_group_overview(country: str):
         kpi_col2.metric("Loss Ratio", fmt_pct(values.get("loss_ratio")))
         kpi_col3.metric("Combined Ratio", fmt_pct(values.get("combined_ratio")))
 
+    st.subheader("Review progress")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric("Harmonized Rows", harmonized_row_count)
+    col2.metric("Approved / Corrected", counts["APPROVED"] + counts["CORRECTED"])
+    col3.metric("Rejected", counts["REJECTED"])
+    col4.metric("Pending", counts["PENDING"])
+    col5.metric("Mandatory Pending", mandatory_pending)
+
+    st.subheader("AI mapping quality")
     latest = evaluation_metrics(evaluations.to_dict("records"), source_system) if not evaluations.empty else {}
     if latest:
         eval_col1, eval_col2 = st.columns(2)
@@ -566,8 +582,8 @@ def page_group_overview(country: str):
 
     if summary:
         chart_data = pd.DataFrame(summary).groupby("review_status")["count"].sum().to_frame()
-        st.subheader("Review Progress")
-        st.bar_chart(chart_data)
+        st.subheader("Review progress by status")
+        st.bar_chart(chart_data, color=PRIMARY_BLUE)
     else:
         st.info("No review state is available for this country yet.")
 
@@ -878,6 +894,7 @@ def main():
         "<rect fill='%23003781' rx='4' width='24' height='24'/>"
         "<path fill='white' d='M7 8h10v2H7zm0 3h10v2H7zm0 3h7v2H7z'/></svg>",
         layout="wide",
+        initial_sidebar_state="expanded",
     )
     inject_custom_css()
 

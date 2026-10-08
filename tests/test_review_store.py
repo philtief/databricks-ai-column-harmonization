@@ -125,14 +125,15 @@ class TestConnect:
         client = MagicMock()
         client.postgres.get_endpoint.return_value.status.hosts.host = "lakebase.example"
         client.current_user.me().user_name = "halvard@example.com"
-        client.postgres.generate_database_credential.return_value.token = "credential"
+        oauth_token = object()  # stand-in for the short-lived Lakebase OAuth token
+        client.postgres.generate_database_credential.return_value.token = oauth_token
         with patch("harmonization.review_store.psycopg.connect") as connect_mock:
             connect(client, "endpoint/path")
         connect_mock.assert_called_once_with(
             host="lakebase.example",
             dbname="databricks_postgres",
             user="halvard@example.com",
-            password="credential",
+            password=oauth_token,
             sslmode="require",
             autocommit=False,
             row_factory=dict_row,

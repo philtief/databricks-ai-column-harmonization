@@ -71,9 +71,9 @@ print(f"Loaded {len(proposals)} proposals for {result.n_columns} answer-key colu
 
 Output:
 ```text
-{"ts": "2026-10-06 14:40:38.074", "level": "WARNING", "logger": "pyspark.sql.connect.logging", "msg": "Effective usage policy for this session is cct.Cihqb2JzLzU2OTI5MDQwMDE1NjIzMS9ydW5zLzQ2ODk5OTEwMTUxODI3EAEgASokYmZhYjNhNjctYjg0MS00ZjU4LWJhMGMtNDg2MGFmNGE3ZTQzMiQwMWExMTFhNi1mMmFlLTcwMmUtYWI2Yi0xOTQyMzkyYjk0OWY6JDQzYjVkNDU1LTg1ODItM2ZjNC1hMjlmLTU4YTI2YzVjYjFhYkIkYmZhYjNhNjctYjg0MS00ZjU4LWJhMGMtNDg2MGFmNGE3ZTQzSgsI7I+U1gYQgJ+dYlACWAFgAWiPhM2BhcWjDYgBAA==.", "context": {}}
-{"ts": "2026-10-06 14:40:38.074", "level": "WARNING", "logger": "pyspark.sql.connect.logging", "msg": "Effective usage policy for this session is cct.Cihqb2JzLzU2OTI5MDQwMDE1NjIzMS9ydW5zLzQ2ODk5OTEwMTUxODI3EAEgASokYmZhYjNhNjctYjg0MS00ZjU4LWJhMGMtNDg2MGFmNGE3ZTQzMiQwMWExMTFhNi1mMmFlLTcwMmUtYWI2Yi0xOTQyMzkyYjk0OWY6JDQzYjVkNDU1LTg1ODItM2ZjNC1hMjlmLTU4YTI2YzVjYjFhYkIkYmZhYjNhNjctYjg0MS00ZjU4LWJhMGMtNDg2MGFmNGE3ZTQzSgsI7I+U1gYQgJ+dYlACWAFgAWiPhM2BhcWjDYgBAA==.", "context": {}}
-{"ts": "2026-10-06 14:40:38.074", "level": "WARNING", "logger": "pyspark.sql.connect.logging", "msg": "Effective usage policy for this session is cct.Cihqb2JzLzU2OTI5MDQwMDE1NjIzMS9ydW5zLzQ2ODk5OTEwMTUxODI3EAEgASokYmZhYjNhNjctYjg0MS00ZjU4LWJhMGMtNDg2MGFmNGE3ZTQzMiQwMWExMTFhNi1mMmFlLTcwMmUtYWI2Yi0xOTQyMzkyYjk0OWY6JDQzYjVkNDU1LTg1ODItM2ZjNC1hMjlmLTU4YTI2YzVjYjFhYkIkYmZhYjNhNjctYjg0MS00ZjU4LWJhMGMtNDg2MGFmNGE3ZTQzSgsI7I+U1gYQgJ+dYlACWAFgAWiPhM2BhcWjDYgBAA==.", "context": {}}
+{"ts": "2026-10-06 14:40:38.074", "level": "WARNING", "logger": "pyspark.sql.connect.logging", "msg": "Effective usage policy for this session is cct.<redacted>.", "context": {}}
+{"ts": "2026-10-06 14:40:38.074", "level": "WARNING", "logger": "pyspark.sql.connect.logging", "msg": "Effective usage policy for this session is cct.<redacted>.", "context": {}}
+{"ts": "2026-10-06 14:40:38.074", "level": "WARNING", "logger": "pyspark.sql.connect.logging", "msg": "Effective usage policy for this session is cct.<redacted>.", "context": {}}
 
 Loaded 24 proposals for 24 answer-key columns.
 ```

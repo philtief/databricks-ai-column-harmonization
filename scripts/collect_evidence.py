@@ -129,6 +129,10 @@ def run_sql(w: WorkspaceClient, warehouse_id: str, statement: str) -> str:
     return md_table(columns, (r.result.data_array or []) if r.result else [])
 
 
+# Spark Connect logs the session's usage-policy token; it reads as a credential, so never publish it.
+SESSION_TOKEN = re.compile(r"cct\.[A-Za-z0-9+/=_-]+")
+
+
 def notebook_text(html: str) -> str:
     """Cell source and text outputs from an exported run (the notebook model is embedded as base64)."""
     match = re.search(r"__DATABRICKS_NOTEBOOK_MODEL = '([^']+)'", html)
@@ -148,7 +152,7 @@ def notebook_text(html: str) -> str:
             if isinstance(data, list)
             else [data]
         )
-        output = "\n".join(t for t in texts if isinstance(t, str) and t.strip())
+        output = SESSION_TOKEN.sub("cct.<redacted>", "\n".join(t for t in texts if isinstance(t, str) and t.strip()))
         if command.get("error") or results.get("cause"):
             output += f"\nERROR: {command.get('error') or results.get('cause')}"
         if output.strip():
